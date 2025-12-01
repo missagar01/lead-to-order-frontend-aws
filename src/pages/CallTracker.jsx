@@ -446,7 +446,7 @@ useEffect(() => {
       // ---------------------------------------------
       // 📌 FETCH PENDING FMS LEADS
       // ---------------------------------------------
-      const pendingRes = await fetch(`${baseURL}/api/enquiry-tracker/pending`, {
+      const pendingRes = await fetch(`${baseURL}/enquiry-tracker/pending`, {
         method: 'GET',
         headers: headers,
         // REMOVE credentials: 'include' - this was causing CORS error
@@ -472,7 +472,7 @@ useEffect(() => {
       // 📌 FETCH DIRECT ENQUIRY PENDING
       // ---------------------------------------------
       const directRes = await fetch(
-        `${baseURL}/api/enquiry-tracker/direct-pending`,
+        `${baseURL}/enquiry-tracker/direct-pending`,
         {
           method: 'GET',
           headers: headers,
@@ -495,7 +495,7 @@ useEffect(() => {
       // 📌 FETCH HISTORY (enquiry_tracker)
       // ---------------------------------------------
       const historyRes = await fetch(
-        `${baseURL}/api/enquiry-tracker/history`,
+        `${baseURL}/enquiry-tracker/history`,
         {
           method: 'GET',
           headers: headers,
