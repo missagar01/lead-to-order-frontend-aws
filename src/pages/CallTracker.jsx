@@ -3,8 +3,8 @@
 import { useState, useEffect, useContext } from "react"
 import { Link } from "react-router-dom"
 import { PlusIcon, SearchIcon, ArrowRightIcon, BuildingIcon } from "../components/Icons"
-import { AuthContext } from "../App" // Import AuthContext just like in the FollowUp component
-import CallTrackerForm from "./Call-Tracker-Form" // Add this import
+import { AuthContext } from "../App"
+import CallTrackerForm from "./Call-Tracker-Form"
 
 // Animation classes
 const slideIn = "animate-in slide-in-from-right duration-300"
@@ -13,7 +13,7 @@ const fadeIn = "animate-in fade-in duration-300"
 const fadeOut = "animate-out fade-out duration-300"
 
 function CallTracker() {
-  const { currentUser, userType, isAdmin } = useContext(AuthContext) // Get user info and admin function
+  const { currentUser, userType, isAdmin, logout } = useContext(AuthContext)
   const [searchTerm, setSearchTerm] = useState("")
   const [activeTab, setActiveTab] = useState("pending")
   const [pendingCallTrackers, setPendingCallTrackers] = useState([])
@@ -27,6 +27,7 @@ function CallTracker() {
   const [enquiryNoFilter, setEnquiryNoFilter] = useState([])
   const [currentStageFilter, setCurrentStageFilter] = useState([])
   const [availableEnquiryNos, setAvailableEnquiryNos] = useState([])
+  const [apiUserType, setApiUserType] = useState(null) // Store userType from API
 
   // Dropdown visibility states
   const [showCallingDaysDropdown, setShowCallingDaysDropdown] = useState(false)
@@ -327,294 +328,234 @@ function CallTracker() {
   }, [])
 
   // Function to fetch data from FMS and Enquiry Tracker sheets
-  useEffect(() => {
-    const fetchCallTrackerData = async () => {
-      try {
-        setIsLoading(true)
+// ================================
+// FIXED FETCH FUNCTION WITH MAPPING
+// ================================
+// ================================
+// FIXED FETCH FUNCTION WITH MAPPING AND CORS FIX
+// ================================
+useEffect(() => {
+  const fetchCallTrackerData = async () => {
+    try {
+      setIsLoading(true);
 
-        // Fetch data from FMS sheet for Pending Call Trackers
-        const pendingUrl =
-          "https://docs.google.com/spreadsheets/d/1bLTwtlHUmADSOyXJBxQJ2sxEy-dII8v2aGCDYuqppx4/gviz/tq?tqx=out:json&sheet=FMS"
-        const pendingResponse = await fetch(pendingUrl)
-        const pendingText = await pendingResponse.text()
-
-        // Extract the JSON part from the FMS sheet response
-        const pendingJsonStart = pendingText.indexOf("{")
-        const pendingJsonEnd = pendingText.lastIndexOf("}") + 1
-        const pendingJsonData = pendingText.substring(pendingJsonStart, pendingJsonEnd)
-
-        const pendingData = JSON.parse(pendingJsonData)
-
-        // Fetch data from Enquiry Tracker sheet for History
-        const historyUrl =
-          "https://docs.google.com/spreadsheets/d/1bLTwtlHUmADSOyXJBxQJ2sxEy-dII8v2aGCDYuqppx4/gviz/tq?tqx=out:json&sheet=Enquiry Tracker"
-        const historyResponse = await fetch(historyUrl)
-        const historyText = await historyResponse.text()
-
-        // Extract the JSON part from the Enquiry Tracker sheet response
-        const historyJsonStart = historyText.indexOf("{")
-        const historyJsonEnd = historyText.lastIndexOf("}") + 1
-        const historyJsonData = historyText.substring(historyJsonStart, historyJsonEnd)
-
-        const historyData = JSON.parse(historyJsonData)
-
-        // Fetch data from ENQUIRY TO ORDER sheet for Direct Enquiry Pending
-        const directEnquiryUrl =
-          "https://docs.google.com/spreadsheets/d/1bLTwtlHUmADSOyXJBxQJ2sxEy-dII8v2aGCDYuqppx4/gviz/tq?tqx=out:json&sheet=ENQUIRY TO ORDER"
-        const directEnquiryResponse = await fetch(directEnquiryUrl)
-        const directEnquiryText = await directEnquiryResponse.text()
-
-        // Extract the JSON part from the ENQUIRY TO ORDER sheet response
-        const directEnquiryJsonStart = directEnquiryText.indexOf("{")
-        const directEnquiryJsonEnd = directEnquiryText.lastIndexOf("}") + 1
-        const directEnquiryJsonData = directEnquiryText.substring(directEnquiryJsonStart, directEnquiryJsonEnd)
-
-        const directEnquiryData = JSON.parse(directEnquiryJsonData)
-
-        // Process Pending Call Trackers from FMS sheet
-        let pendingCallTrackerData = []
-        if (pendingData && pendingData.table && pendingData.table.rows) {
-          pendingCallTrackerData = []
-
-          // Skip the header row (index 0)
-          pendingData.table.rows.slice(2).forEach((row, index) => {
-            // Only show rows where column AJ (index 35) is not null and column AK (index 36) is null
-            if (row.c && row.c[27] && row.c[27].v && (!row.c[28] || !row.c[28].v)) {
-              // Get the assigned user from column CC (index 88) like in the FollowUp component
-              const assignedUser = row.c[56] ? row.c[56].v : ""
-
-              // For admin users, include all rows; for regular users, filter by their username
-              const shouldInclude = isAdmin() || (currentUser && assignedUser === currentUser.username)
-
-              if (shouldInclude) {
-                const callTrackerItem = {
-                  id: index + 1,
-                  timestamp: row.c[41] ? formatDateToDDMMYYYY(row.c[41].v) : "", // Column AB - Timestamp
-                  leadId: row.c[1] ? row.c[1].v : "", // Column B - Lead Number
-                  receiverName: row.c[2] ? row.c[2].v : "", // Column C - Lead Receiver Name
-                  leadSource: row.c[3] ? row.c[3].v : "", // Column D - Lead Source
-                  salespersonName: row.c[6] ? row.c[6].v : "", // Column E - Salesperson Name
-                  phoneNumber: row.c[5] ? row.c[5].v : "", // Added phone number from column F (index 5)
-                  companyName: row.c[4] ? row.c[4].v : "", // Column G - Company Name
-                  createdAt: row.c[0] ? formatDateToDDMMYYYY(row.c[0].v) : "", // Using date from column A
-                  status: "Expected", // Default status for pending
-                  priority: determinePriority(row.c[3] ? row.c[3].v : ""), // Determine priority based on source
-                  stage: "Pending", // Default stage
-                  dueDate: "", // You might want to add logic to calculate due date
-                  assignedTo: assignedUser, // Add assigned user to the tracker item
-                  currentStage: row.c[32] ? row.c[32].v : "", // Column BF - Current Stage
-                  // callingDate: row.c[90] ? formatDateToDDMMYYYY(row.c[90].v) : "", // Column CM - Calling Date
-                  callingDate: row.c[57] ? String(row.c[57].v).toLowerCase() : "", // Column CM - Calling Date 
-                  itemQty: row.c[22] ? row.c[22].v : "",
-                }
-
-                pendingCallTrackerData.push(callTrackerItem)
-              }
-            }
-          })
-
-          setPendingCallTrackers(pendingCallTrackerData)
-        }
-
-        // Process History Call Trackers from Enquiry Tracker sheet
-        let historyCallTrackerData = []
-        // Process History Call Trackers from Enquiry Tracker sheet
-        if (historyData && historyData.table && historyData.table.rows) {
-          const historyCallTrackerData = []
-
-          // Start from index 1 to skip header row
-          historyData.table.rows.slice(0).forEach((row, index) => {
-            if (row.c) {
-              // Get the assigned user from column AL (index 37)
-              const assignedUser = row.c[37] ? row.c[37].v : ""
-
-              // For admin users, include all rows; for regular users, filter by their username
-              const shouldInclude = isAdmin() || (currentUser && assignedUser === currentUser.username)
-
-              if (shouldInclude) {
-                const callTrackerItem = {
-                  id: index + 1,
-                  timestamp: formatDateToDDMMYYYY(row.c[0] ? row.c[0].v : ""), // Column A - Timestamp
-                  enquiryNo: row.c[1] ? row.c[1].v : "", // Column B - Enquiry No
-                  enquiryStatus: row.c[2] ? row.c[2].v : "", // Column C - Enquiry Status
-                  companyName: row.c[31] ? row.c[31].v : "",
-                  salesPersonName: row.c[32] ? row.c[32].v : "",
-                  customerFeedback: row.c[3] ? row.c[3].v : "", // Column D - What Did Customer Say
-                  currentStage: row.c[4] ? row.c[4].v : "", // Column E - Current Stage
-                  sendQuotationNo: row.c[5] ? row.c[5].v : "", // Column F - Send Quotation No
-                  quotationSharedBy: row.c[6] ? row.c[6].v : "", // Column G - Quotation Shared By
-                  quotationNumber: row.c[7] ? row.c[7].v : "", // Column H - Quotation Number
-                  valueWithoutTax: row.c[8] ? row.c[8].v : "", // Column I - Value Without Tax
-                  valueWithTax: row.c[9] ? row.c[9].v : "", // Column J - Value With Tax
-                  quotationUpload: row.c[10] ? row.c[10].v : "", // Column K - Quotation Upload
-                  quotationRemarks: row.c[11] ? row.c[11].v : "", // Column L - Quotation Remarks
-                  validatorName: row.c[12] ? row.c[12].v : "", // Column M - Validator Name
-                  // sendStatus: row.c[13] ? row.c[13].v : "", // Column N - Send Status
-                  // validationRemark: row.c[14] ? row.c[14].v : "", // Column O - Validation Remark
-                  // faqVideo: row.c[15] ? row.c[15].v : "", // Column P - FAQ Video
-                  // productVideo: row.c[16] ? row.c[16].v : "", // Column Q - Product Video
-                  // offerVideo: row.c[17] ? row.c[17].v : "", // Column R - Offer Video
-                  // productCatalog: row.c[18] ? row.c[18].v : "", // Column S - Product Catalog
-                  // productImage: row.c[19] ? row.c[19].v : "", // Column T - Product Image
-                  nextCallDate: formatDateToDDMMYYYY(row.c[13] ? row.c[13].v : ""), // Column U - Next Call Date
-                  nextCallTime: formatTimeTo12Hour(row.c[14] ? row.c[14].v : ""), // Column V - Next Call Time
-                  orderStatus: row.c[15] ? row.c[15].v : "", // Column W - Is Order Received? Status
-                  acceptanceVia: row.c[16] ? row.c[16].v : "", // Column X - Acceptance Via
-                  paymentMode: row.c[17] ? row.c[17].v : "", // Column Y - Payment Mode
-                  paymentTerms: row.c[18] ? row.c[18].v : "", // Column Z - Payment Terms
-                  transportMode: row.c[19] ? row.c[19].v : "", // Column AA - Transport Mode
-                  registrationFrom: row.c[20] ? row.c[20].v : "", // Column AB - Registration From
-                  orderVideo: row.c[28] ? row.c[28].v : "", // Column AC - Order Video
-                  acceptanceFile: row.c[21] ? row.c[21].v : "", // Column AD - Acceptance File
-                  orderRemark: row.c[22] ? row.c[22].v : "", // Column AE - Remark
-                  apologyVideo: row.c[31] ? row.c[31].v : "", // Column AF - Apology Video
-                  reasonStatus: row.c[23] ? row.c[23].v : "", // Column AG - Reason Status
-                  reasonRemark: row.c[24] ? row.c[24].v : "", // Column AH - Reason Remark
-                  holdReason: row.c[25] ? row.c[25].v : "", // Column AI - Hold Reason
-                  holdingDate: formatDateToDDMMYYYY(row.c[26] ? row.c[26].v : ""), // Column AJ - Holding Date
-                  holdRemark: row.c[27] ? row.c[27].v : "", // Column AK - Hold Remark
-                  priority: determinePriority(row.c[2] ? row.c[2].v : ""), // Determine priority based on status
-                  // callingDate: formatDateToDDMMYYYY(row.c[41] ? row.c[41].v : ""), // Column AP - Calling Date
-                  callingDate: row.c[29] ? String(row.c[29].v).toLowerCase() : "", // Column AP - Calling Date 
-                  assignedTo: assignedUser, // Add assigned user to the history item
-                  itemQty: row.c[28] ? row.c[28].v : "",
-                }
-
-                historyCallTrackerData.push(callTrackerItem)
-              }
-            }
-          })
-
-          setHistoryCallTrackers(historyCallTrackerData)
-        }
-
-        // Process Direct Enquiry Pending from ENQUIRY TO ORDER sheet
-        let directEnquiryPendingData = []
-        if (directEnquiryData && directEnquiryData.table && directEnquiryData.table.rows) {
-          directEnquiryPendingData = []
-
-          // Skip the header row (index 0)
-          directEnquiryData.table.rows.slice(1).forEach((row, index) => {
-            // Only show rows where column AH (index 37) is not null and column AI (index 38) is null
-            if (row.c && row.c[12] && row.c[12].v && (!row.c[13] || !row.c[13].v)) {
-              // Get the assigned user from column BX (index 75)
-              const assignedUser = row.c[41] ? row.c[41].v : ""
-
-              // For admin users, include all rows; for regular users, filter by their username
-              const shouldInclude = isAdmin() || (currentUser && assignedUser === currentUser.username)
-
-              if (shouldInclude) {
-                const directEnquiryItem = {
-                  id: index + 1,
-                  timestamp: row.c[0] ? formatDateToDDMMYYYY(row.c[0].v) : "", // Column AL - Timestamp
-                  leadId: row.c[1] ? row.c[1].v : "", // Column B - Lead Number
-                  receiverName: row.c[2] ? row.c[2].v : "", // Column C - Lead Receiver Name
-                  leadSource: row.c[3] ? row.c[3].v : "", // Column D - Lead Source
-                  salespersonName: row.c[41] ? row.c[41].v : "", // Column E - Salesperson Name
-                  companyName: row.c[17] ? row.c[17].v : "", // Column G - Company Name
-                  createdAt: row.c[0] ? formatDateToDDMMYYYY(row.c[0].v) : "", // Using date from column A
-                  status: "Expected", // Default status for pending
-                  priority: determinePriority(row.c[3] ? row.c[3].v : ""), // Determine priority based on source
-                  stage: "Pending", // Default stage
-                  dueDate: "", // You might want to add logic to calculate due date
-                  assignedTo: assignedUser, // Add assigned user to the tracker item
-                  currentStage: row.c[15] ? row.c[15].v : "", // Column AQ - Current Stage
-                  // callingDate: row.c[76] ? formatDateToDDMMYYYY(row.c[76].v) : "", // Column BY - Calling Date
-                  callingDate1: row.c[42] ? formatDateToDDMMYYYY(row.c[42].v) : "", // Column BY - Calling Date as text
-                  callingDate: row.c[42] ? String(row.c[42].v).toLowerCase() : "", // Column BY - Calling Date as text
-                  itemQty: row.c[11] ? row.c[11].v : "",
-                  enquiryReceiverName: row.c[8] ? row.c[8].v : "",
-                }
-
-                directEnquiryPendingData.push(directEnquiryItem)
-              }
-            }
-          })
-
-          setDirectEnquiryPendingTrackers(directEnquiryPendingData)
-        }
-
-        // Extract unique enquiry numbers for filter dropdown
-        const allEnquiryNos = new Set()
-
-        // Add enquiry numbers from pending data
-        pendingCallTrackerData.forEach((item) => {
-          if (item.leadId) allEnquiryNos.add(item.leadId)
-        })
-
-        // Add enquiry numbers from direct enquiry data
-        directEnquiryPendingData.forEach((item) => {
-          if (item.leadId) allEnquiryNos.add(item.leadId)
-        })
-
-        // Add enquiry numbers from history data
-        historyCallTrackerData.forEach((item) => {
-          if (item.enquiryNo) allEnquiryNos.add(item.enquiryNo)
-        })
-
-        setAvailableEnquiryNos(Array.from(allEnquiryNos).sort())
-      } catch (error) {
-        console.error("Error fetching call tracker data:", error)
-        // Fallback to mock data if fetch fails
-        setPendingCallTrackers([
-          {
-            id: "1",
-            leadId: "En-001",
-            receiverName: "John Doe",
-            leadSource: "Website",
-            salespersonName: "Jane Smith",
-            phoneNumber: "9876543210", // Added sample phone number
-            companyName: "Sample Corp",
-            status: "Expected",
-            priority: "Medium",
-            stage: "Pending",
-            dueDate: "2023-05-20",
-            currentStage: "make-quotation",
-            callingDate: "15/05/2023",
-          },
-        ])
-
-        setHistoryCallTrackers([
-          {
-            id: "2",
-            timestamp: "10/05/2023",
-            enquiryNo: "En-002",
-            enquiryStatus: "Cold",
-            customerFeedback: "Will think about it",
-            currentStage: "Order Status",
-            priority: "Low",
-            nextCallDate: "15/05/2023",
-            nextCallTime: "5:30 PM",
-            holdingDate: "20/05/2023",
-            callingDate: "12/05/2023",
-          },
-        ])
-
-        setDirectEnquiryPendingTrackers([
-          {
-            id: "3",
-            leadId: "En-003",
-            receiverName: "Alice Brown",
-            leadSource: "Referral",
-            salespersonName: "Bob Johnson",
-            companyName: "Test Corp",
-            createdAt: "05/05/2023",
-            status: "Expected",
-            priority: "High",
-            stage: "Pending",
-            currentStage: "quotation-validation",
-            callingDate: "18/05/2023",
-          },
-        ])
-
-        setAvailableEnquiryNos(["En-001", "En-002", "En-003"])
-      } finally {
-        setIsLoading(false)
+      const baseURL = import.meta.env.VITE_API_URL || "http://localhost:5050";
+      
+      // Get token from localStorage or AuthContext
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        console.error("No authentication token found");
+        // Handle redirect to login or show error
+        return;
       }
-    }
 
-    fetchCallTrackerData()
-  }, [currentUser, isAdmin]) // Add isAdmin to dependencies like in FollowUp
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      };
+
+      // ---------------------------------------------
+      // 🔵 1) MAP PENDING (FMS LEADS) ROWS
+      // ---------------------------------------------
+      const mapPending = (row) => ({
+        id: row.id,
+        timestamp: row.created_at,
+        leadId: row.lead_no,
+        receiverName: row.lead_receiver_name,
+        leadSource: row.lead_source,
+        phoneNumber: row.phone_number,
+        salespersonName: row.salesperson_name,
+        companyName: row.company_name,
+        currentStage: row.current_stage,
+        callingDate: row.next_call_date
+          ? formatDateToDDMMYYYY(row.next_call_date)
+          : "",
+        assignedTo: row.sc_name,
+        itemQty: row.item_qty,
+        priority: determinePriority(row.lead_source),
+      });
+
+      // ---------------------------------------------
+      // 🔵 2) MAP DIRECT ENQUIRY PENDING (enquiry_to_order)
+      // ---------------------------------------------
+      const mapDirect = (row) => ({
+        id: row.id,
+        timestamp: row.timestamp,
+        leadId: row.en_enquiry_no,
+        leadSource: row.lead_source,
+        companyName: row.company_name,
+        enquiryReceiverName: row.enquiry_receiver_name,
+        currentStage: row.current_stage,
+        callingDate1: row.next_call_date
+          ? formatDateToDDMMYYYY(row.next_call_date)
+          : "",
+        itemQty: row.item_qty,
+        priority: determinePriority(row.lead_source),
+      });
+
+      // ---------------------------------------------
+      // 🔵 3) MAP HISTORY (enquiry_tracker)
+      // ---------------------------------------------
+      const mapHistory = (row) => ({
+        id: row.id,
+        timestamp: row.timestamp,
+        enquiryNo: row.enquiry_no,
+        enquiryStatus: row.enquiry_status,
+        companyName: row.party_name || "",
+        salesPersonName: row.sales_person_name || "",
+        customerFeedback: row.what_did_customer_say,
+        currentStage: row.current_stage,
+        nextCallDate: row.next_call_date
+          ? formatDateToDDMMYYYY(row.next_call_date)
+          : "",
+        nextCallTime: row.next_call_time,
+        orderStatus: row.is_order_received_status,
+        acceptanceVia: row.acceptance_via,
+        paymentMode: row.payment_mode,
+        paymentTerms: row.payment_terms_in_days,
+        transportMode: row.transport_mode,
+        orderRemark: row.remark,
+        reasonStatus: row.if_no_relevant_reason_status,
+        reasonRemark: row.if_no_relevant_reason_remark,
+        holdReason: row.customer_order_hold_reason_category,
+        holdingDate: row.holding_date
+          ? formatDateToDDMMYYYY(row.holding_date)
+          : "",
+        holdRemark: row.hold_remark,
+      });
+
+      // Helper function to handle API errors
+      const handleApiError = async (response) => {
+        if (!response.ok) {
+          if (response.status === 401) {
+            // Token expired or invalid
+            console.error("Authentication failed. Redirecting to login...");
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            if (logout) logout();
+            window.location.href = '/login';
+            throw new Error('Authentication failed');
+          }
+          const errorText = await response.text();
+          throw new Error(`API Error: ${response.status} - ${errorText}`);
+        }
+        return response;
+      };
+
+      // ---------------------------------------------
+      // 📌 FETCH PENDING FMS LEADS
+      // ---------------------------------------------
+      const pendingRes = await fetch(`${baseURL}/api/enquiry-tracker/pending`, {
+        method: 'GET',
+        headers: headers,
+        // REMOVE credentials: 'include' - this was causing CORS error
+        // credentials: 'include' // Remove this line
+      }).then(handleApiError);
+      
+      const pendingJson = await pendingRes.json();
+      
+      if (!pendingJson.success) {
+        throw new Error(pendingJson.message || 'Failed to fetch pending data');
+      }
+      
+      // Store userType from API response
+      if (pendingJson.userType) {
+        setApiUserType(pendingJson.userType);
+      }
+      
+      setPendingCallTrackers(
+        (pendingJson.data || []).map(mapPending)
+      );
+
+      // ---------------------------------------------
+      // 📌 FETCH DIRECT ENQUIRY PENDING
+      // ---------------------------------------------
+      const directRes = await fetch(
+        `${baseURL}/api/enquiry-tracker/direct-pending`,
+        {
+          method: 'GET',
+          headers: headers,
+          // REMOVE credentials: 'include'
+          // credentials: 'include'
+        }
+      ).then(handleApiError);
+      
+      const directJson = await directRes.json();
+      
+      if (!directJson.success) {
+        throw new Error(directJson.message || 'Failed to fetch direct enquiry data');
+      }
+      
+      setDirectEnquiryPendingTrackers(
+        (directJson.data || []).map(mapDirect)
+      );
+
+      // ---------------------------------------------
+      // 📌 FETCH HISTORY (enquiry_tracker)
+      // ---------------------------------------------
+      const historyRes = await fetch(
+        `${baseURL}/api/enquiry-tracker/history`,
+        {
+          method: 'GET',
+          headers: headers,
+          // REMOVE credentials: 'include'
+          // credentials: 'include'
+        }
+      ).then(handleApiError);
+      
+      const historyJson = await historyRes.json();
+      
+      if (!historyJson.success) {
+        throw new Error(historyJson.message || 'Failed to fetch history data');
+      }
+      
+      setHistoryCallTrackers(
+        (historyJson.data || []).map(mapHistory)
+      );
+
+      // ---------------------------------------------
+      // 🔍 Build Enquiry number dropdown list
+      // ---------------------------------------------
+      const allNos = new Set();
+
+      // Collect enquiry numbers from all data sources
+      (pendingJson.data || []).forEach((i) => i.lead_no && allNos.add(i.lead_no));
+      (directJson.data || []).forEach((i) => i.en_enquiry_no && allNos.add(i.en_enquiry_no));
+      (historyJson.data || []).forEach((i) => i.enquiry_no && allNos.add(i.enquiry_no));
+
+      setAvailableEnquiryNos(Array.from(allNos).sort());
+
+    } catch (err) {
+      console.error("Frontend Fetch Error:", err);
+      
+      // Don't redirect if it's a non-auth error and user is still logged in
+      if (!err.message.includes('Authentication failed') && 
+          !err.message.includes('401') &&
+          !err.message.includes('token')) {
+        // Show user-friendly error message
+        console.error("Data fetch error:", err.message);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Only fetch data if we have authentication
+  const token = localStorage.getItem('token');
+  if (token) {
+    fetchCallTrackerData();
+  } else if (currentUser) {
+    // If we have currentUser but no token, try to use context
+    fetchCallTrackerData();
+  } else {
+    // No authentication at all, redirect to login
+    console.log("No authentication found, redirecting to login");
+    window.location.href = '/login';
+  }
+
+}, [currentUser, userType, isAdmin, logout]); // Added logout to dependencies
+
 
   // Enhanced filter function for search and dropdown filters
   const filterTrackers = (tracker, searchTerm, activeTab) => {
@@ -1177,14 +1118,23 @@ function CallTracker() {
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Calling Date
                         </th>
-                        {isAdmin() && (
+                        {/* {isAdmin() && (
                           <th
                             scope="col"
                             className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                           >
                             Assigned To
                           </th>
-                        )}
+                        )} */}
+
+{(apiUserType === "admin" || isAdmin()) && (
+  <th
+    scope="col"
+    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+  >
+    Assigned To
+  </th>
+)}
                         <th
                           scope="col"
                           className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
@@ -1267,7 +1217,8 @@ function CallTracker() {
                       ) : (
                         <tr>
                           <td
-                            colSpan={isAdmin() ? 11 : 10} // Updated to include the new Item/Qty column
+                            // colSpan={isAdmin() ? 11 : 10} // Updated to include the new Item/Qty column
+                            colSpan={(apiUserType === "admin" || isAdmin()) ? 11 : 10}
                             className="px-6 py-4 text-center text-sm text-slate-500"
                           >
                             No pending call trackers found

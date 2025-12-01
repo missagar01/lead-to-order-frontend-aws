@@ -39,19 +39,41 @@ function Leads() {
     return `${day}/${month}/${year}`
   }
 
-  // Fetch dropdown data when component mounts
-  useEffect(() => {
-    const fetchInitialData = async () => {
-      try {
-        await fetchDropdownData()
-        await fetchCompanyData()
-      } catch (error) {
-        console.error("Error during initial data fetch:", error)
-      }
+  const API_BASE_URL = import.meta.env.VITE_API_URL;
+
+const fetchLeadDropdowns = async () => {
+  try {
+    // const res = await fetch("http://localhost:5050/api/lead-dropdown");
+    const res = await fetch(`${API_BASE_URL}/lead-dropdown`);
+    const result = await res.json();
+
+    if (result.success) {
+      const d = result.data || {};
+
+      setReceiverNames(d.receiverNames || []);
+      setScNames(d.scNames || []);
+      setLeadSources(d.leadSources || []);
+      setStateOptions(d.states || []);
+      setNobOptions(d.nob || []);
+
+      // SAFE VERSION (NO CRASH)
+      const companyList = d.companyList || {};
+
+      setCompanyOptions(Object.keys(companyList));
+      setCompanyDetailsMap(companyList);
     }
-    
-    fetchInitialData()
-  }, [])
+  } catch (error) {
+    console.error("Error fetching dropdowns:", error);
+  }
+};
+
+
+
+  // Fetch dropdown data when component mounts
+useEffect(() => {
+  fetchLeadDropdowns();
+}, []);
+
 
   // Function to fetch dropdown data from DROPDOWNSHEET
   const fetchDropdownData = async () => {
@@ -168,17 +190,19 @@ function Leads() {
     }))
 
     // Auto-fill related fields if company is selected
-    if (id === 'companyName' && value) {
-      const companyDetails = companyDetailsMap[value] || {}
-      setFormData(prevData => ({
-        ...prevData,
-        companyName: value,
-        phoneNumber: companyDetails.phoneNumber || "",
-        salespersonName: companyDetails.salesPerson || "",
-        location: companyDetails.location || "",
-        email: companyDetails.email || ""
-      }))
-    }
+if (id === "companyName" && value) {
+  const companyDetails = companyDetailsMap[value] || {};
+
+  setFormData(prev => ({
+    ...prev,
+    companyName: value,
+    phoneNumber: companyDetails.phoneNumber || "",
+    salespersonName: companyDetails.salesPerson || "",
+    location: companyDetails.location || "",
+    email: companyDetails.email || ""
+  }));
+}
+
   }
 
   const generateLeadNumber = async () => {
@@ -228,81 +252,79 @@ function Leads() {
     }
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setIsSubmitting(true)
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setIsSubmitting(true);
 
-    try {
-      const formattedDate = formatDate(new Date())
-      const leadNumber = await generateLeadNumber()
-      
-      // Create row data with SC Name in column B
-      const rowData = [
-        formattedDate,        // Column A: Date
-        "",                   // Column C: Lead Number (empty as per original code)
-        formData.receiverName, // Column D: Receiver Name
-        formData.source,      // Column E: Source
-        formData.companyName, // Column F: Company Name
-        formData.phoneNumber, // Column G: Phone Number
-        formData.salespersonName, // Column H: Salesperson Name
-        formData.location,    // Column I: Location
-        formData.email,       // Column J: Email
-        formData.state,       // Column K: State
-        formData.address,     // Column L: Address
-        formData.nob,         // Column M: Nature of Business (adjusted position)
-        formData.notes,        // Column N: Notes (adjusted position)
-        "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
-        formData.scName
-      ]
+  try {
+    const payload = {
+      receiverName: formData.receiverName,
+      scName: formData.scName,
+      source: formData.source,
+      companyName: formData.companyName,
+      phoneNumber: formData.phoneNumber,
+      salespersonName: formData.salespersonName,
+      location: formData.location,
+      email: formData.email,
+      state: formData.state,
+      address: formData.address,
+      nob: formData.nob,
+      notes: formData.notes,
+    };
 
-      const params = {
-        sheetName: "FMS",
-        action: "insert",
-        rowData: JSON.stringify(rowData)
-      }
+    // const response = await fetch("http://localhost:5050/api/leads", {
+    //   method: "POST",
+    //   headers: {
+    //     "Content-Type": "application/json",
+    //   },
+    //   body: JSON.stringify(payload),
+    // });
 
-      const urlParams = new URLSearchParams()
-      for (const key in params) {
-        urlParams.append(key, params[key])
-      }
-      
-      const response = await fetch(scriptUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: urlParams
-      })
+     const response = await fetch(`${API_BASE_URL}/leads`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
 
-      const result = await response.json()
-      
-      if (result.success) {
-        showNotification(`Lead created successfully with Lead Number: ${leadNumber}`, "success")
-        
-        // Reset form
-        setFormData({
-          receiverName: "",
-          scName: "",
-          source: "",
-          companyName: "",
-          phoneNumber: "",
-          salespersonName: "",
-          location: "",
-          email: "",
-          state: "",
-          address: "",
-          nob: "",
-          notes: ""
-        })
-      } else {
-        showNotification("Error creating lead: " + (result.error || "Unknown error"), "error")
-      }
-    } catch (error) {
-      showNotification("Error submitting form: " + error.message, "error")
-    } finally {
-      setIsSubmitting(false)
+    const result = await response.json();
+
+    if (response.ok && result.success) {
+      const leadNumber = result.data?.leadNo;
+      showNotification(
+        `Lead created successfully with Lead Number: ${leadNumber}`,
+        "success"
+      );
+
+      // Reset form
+      setFormData({
+        receiverName: "",
+        scName: "",
+        source: "",
+        companyName: "",
+        phoneNumber: "",
+        salespersonName: "",
+        location: "",
+        email: "",
+        state: "",
+        address: "",
+        nob: "",
+        notes: "",
+      });
+    } else {
+      showNotification(
+        "Error creating lead: " + (result.message || "Unknown error"),
+        "error"
+      );
     }
+  } catch (error) {
+    showNotification("Error submitting form: " + error.message, "error");
+  } finally {
+    setIsSubmitting(false);
   }
+};
+
 
   return (
     <div className="container mx-auto py-10 px-4">

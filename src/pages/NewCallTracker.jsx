@@ -82,6 +82,8 @@ function NewCallTracker() {
     poNumber: "",
   })
 
+  const API_BASE_URL = import.meta.env.VITE_API_URL;
+
   // Add this function inside the NewCallTracker component
   const fetchLatestQuotationNumber = async (enquiryNo) => {
     try {
@@ -116,55 +118,46 @@ function NewCallTracker() {
   }
 
   // Fetch dropdown options from DROPDOWN sheet column G
-  useEffect(() => {
-    const fetchDropdownOptions = async () => {
-      try {
-        setIsLoadingDropdown(true)
+// Fetch dropdown options from backend AWS Postgres
+// Fetch dropdown options from backend AWS Postgres
+useEffect(() => {
+  const fetchDropdownOptions = async () => {
+    try {
+      setIsLoadingDropdown(true);
 
-        // Fetch data from DROPDOWN sheet
-        const dropdownUrl = "https://docs.google.com/spreadsheets/d/1bLTwtlHUmADSOyXJBxQJ2sxEy-dII8v2aGCDYuqppx4/gviz/tq?tqx=out:json&sheet=DROPDOWN"
-        const response = await fetch(dropdownUrl)
-        const text = await response.text()
+      // Fetch enquiry status
+      // const statusRes = await fetch(
+      //   "http://localhost:5050/api/enquiry-tracker-form-dropdowns/enquiry_status"
+      // );
+      const statusRes = await fetch(`${API_BASE_URL}/enquiry-tracker-form-dropdowns/enquiry_status`);
+      const statusJson = await statusRes.json();
 
-        // Extract the JSON part from the response
-        const jsonStart = text.indexOf('{')
-        const jsonEnd = text.lastIndexOf('}') + 1
-        const jsonData = text.substring(jsonStart, jsonEnd)
+      // Fetch customer feedback
+      // const feedbackRes = await fetch(
+      //   "http://localhost:5050/api/enquiry-tracker-form-dropdowns/what_did_customer_say"
+      // );
+      const feedbackRes = await fetch(`${API_BASE_URL}/enquiry-tracker-form-dropdowns/what_did_customer_say`);
+      const feedbackJson = await feedbackRes.json();
 
-        const data = JSON.parse(jsonData)
-
-        // Extract values from columns
-        if (data && data.table && data.table.rows) {
-          const statusOptions = []
-          const feedbackOptions = []
-
-          // Skip the header row (index 0)
-          data.table.rows.slice(0).forEach(row => {
-            // Column G is index 6 for enquiry status
-            if (row.c && row.c[6] && row.c[6].v) {
-              statusOptions.push(row.c[6].v)
-            }
-            // Column CG is index 86 for customer feedback
-            if (row.c && row.c[84] && row.c[84].v) {
-              feedbackOptions.push(row.c[84].v.toString())
-            }
-          })
-
-          setEnquiryStatusOptions(statusOptions)
-          setCustomerFeedbackOptions(feedbackOptions)
-        }
-      } catch (error) {
-        console.error("Error fetching dropdown options:", error)
-        // Fallback options if fetch fails
-        setEnquiryStatusOptions(["hot", "warm", "cold"])
-        setCustomerFeedbackOptions(["Feedback 1", "Feedback 2", "Feedback 3"])
-      } finally {
-        setIsLoadingDropdown(false)
+      if (statusJson.success) {
+        setEnquiryStatusOptions(statusJson.values);
       }
-    }
 
-    fetchDropdownOptions()
-  }, [])
+      if (feedbackJson.success) {
+        setCustomerFeedbackOptions(feedbackJson.values);
+      }
+
+    } catch (error) {
+      console.error("❌ Dropdown fetch error:", error);
+    } finally {
+      setIsLoadingDropdown(false);
+    }
+  };
+
+  fetchDropdownOptions();
+}, []);
+
+
 
   // Update form data when leadId changes
   useEffect(() => {
@@ -289,206 +282,112 @@ function NewCallTracker() {
 
 
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setIsSubmitting(true);
 
-    try {
-      const currentDate = new Date();
-      const formattedDate = formatDate(currentDate);
+  try {
+    let acceptanceFileUrl = "";
+    let apologyVideoUrl = "";
+    let orderNumber = "";
 
-      // If there's a quotation file and it's an image, upload it first
-      let fileUrl = "";
-      if (currentStage === "make-quotation" && quotationData.quotationFile) {
-        const fileType = quotationData.quotationFile.type.startsWith("image/") ? "image" : "pdf";
-        showNotification(`Uploading ${fileType}...`, "info");
-        fileUrl = await uploadFileToDrive(quotationData.quotationFile, fileType);
-        showNotification(`${fileType.charAt(0).toUpperCase() + fileType.slice(1)} uploaded successfully`, "success");
+    // Upload acceptance file if YES
+    if (currentStage === "order-status" && orderStatusData.orderStatus === "yes") {
+      if (orderStatusData.acceptanceFile) {
+        showNotification("Uploading acceptance file...", "info");
+        acceptanceFileUrl = await uploadFileToDrive(orderStatusData.acceptanceFile);
+        showNotification("Acceptance file uploaded", "success");
       }
-
-      // If there are order status files, upload them
-      let acceptanceFileUrl = "";
-      let apologyVideoUrl = "";
-
-      // Generate order number if status is "yes"
-      let orderNumber = "";
-      if (currentStage === "order-status" && orderStatusData.orderStatus === "yes") {
-        // Get the latest order number from the sheet
-        const latestOrderNumber = await getLatestOrderNumber();
-        orderNumber = generateNextOrderNumber(latestOrderNumber);
-
-        if (orderStatusData.acceptanceFile) {
-          showNotification("Uploading acceptance file...", "info");
-          acceptanceFileUrl = await uploadFileToDrive(orderStatusData.acceptanceFile);
-          showNotification("Acceptance file uploaded successfully", "success");
-        }
-      } else if (currentStage === "order-status" && orderStatusData.orderStatus === "no") {
-        if (orderStatusData.apologyVideo) {
-          showNotification("Uploading apology video...", "info");
-          apologyVideoUrl = await uploadFileToDrive(orderStatusData.apologyVideo);
-          showNotification("Apology video uploaded successfully", "success");
-        }
-      }
-
-      // Prepare row data based on the selected stage
-      let rowData = [
-        formattedDate, // Date
-        formData.enquiryNo, // Enquiry No
-        formData.enquiryStatus, // Status (hot/warm/cold)
-        formData.customerFeedback, // Customer feedback
-        currentStage, // Current Stage
-      ];
-
-      // Add stage-specific data based on what's selected
-      if (currentStage === "make-quotation") {
-        rowData.push(
-          quotationData.sendQuotationNo,
-          quotationData.quotationSharedBy,
-          quotationData.quotationNumber, // Column H
-          quotationData.valueWithoutTax,
-          quotationData.valueWithTax,
-          fileUrl || "", // Add the image URL in column K
-          quotationData.remarks // Add the remarks in column L
-        );
-        // Add empty values for remaining columns
-        rowData.push(...new Array(22).fill(""));
-      } else if (currentStage === "quotation-validation") {
-        // Add empty values for columns F-G
-        rowData.push("", "");
-        // Add quotation number in column H
-        rowData.push(validationData.validationQuotationNumber);
-        // Add empty values for columns I-L (remaining quotation data)
-        rowData.push("", "", "", "");
-        // Add validation data for columns M-T
-        rowData.push(
-          validationData.validatorName, // Column M
-          validationData.sendStatus, // Column N
-          validationData.validationRemark, // Column O
-          validationData.faqVideo, // Column P
-          validationData.productVideo, // Column Q
-          validationData.offerVideo, // Column R
-          validationData.productCatalog, // Column S
-          validationData.productImage // Column T
-        );
-        // Add empty values for remaining columns
-        rowData.push(...new Array(15).fill(""));
-      } else if (currentStage === "order-expected") {
-        // Add empty values for columns F-L (quotation columns)
-        rowData.push(...new Array(7).fill(""));
-        // Add order expected data for columns M, N, O
-        rowData.push(
-          orderExpectedData.nextCallDate, // Column M
-          orderExpectedData.nextCallTime, // Column N
-          orderExpectedData.followupStatus // Column O
-        );
-        // Add empty values for remaining columns P-AE
-        rowData.push(...new Array(16).fill(""));
-      } else if (currentStage === "order-status") {
-        // Add empty values for columns F-L (quotation columns)
-        rowData.push(...new Array(7).fill(""));
-        // Add empty values for columns M-O (order expected columns)
-        rowData.push("", "", "");
-
-        // Based on order status, add data to appropriate columns
-        // Based on order status, add data to appropriate columns
-        if (orderStatusData.orderStatus === "yes") {
-          // Add YES data for columns P-Z
-          rowData.push(
-            orderStatusData.orderStatus, // Column P - Is Order Received? Status
-            orderStatusData.acceptanceVia, // Column Q - Acceptance Via
-            orderStatusData.paymentMode, // Column R - Payment Mode
-            orderStatusData.paymentTerms, // Column S - Payment Terms (In Days)
-            orderStatusData.transportMode, // Column T - Transport Mode
-            // orderStatusData.creditDays, // Column U - Credit Days
-            // orderStatusData.creditLimit, // Column V - Credit Limit
-            // orderStatusData.destination || "", // Column W - Destination
-            orderStatusData.poNumber || "", // Column X - PO Number
-            acceptanceFileUrl || "", // Column Y - Acceptance File Upload
-            orderStatusData.orderRemark // Column Z - Remark
-          );
-          // Add empty values for NO columns (AA-AB) and HOLD columns (AC-AE)
-          // rowData.push(...new Array(5).fill(""));
-          rowData.push(...new Array(7).fill(""), orderNumber);
-        } else if (orderStatusData.orderStatus === "no") {
-          // Add status first, then empty values for YES columns (Q-Z)
-          rowData.push(
-            orderStatusData.orderStatus, // Column P - Is Order Received? Status
-            ...new Array(7).fill("") // Empty values for columns Q-Z
-          );
-          // Add NO data for columns AA-AB
-          rowData.push(
-            orderStatusData.reasonStatus, // Column AA - If No Then Get Relevant Reason Status
-            orderStatusData.reasonRemark // Column AB - If No Then Get Relevant Reason Remark
-          );
-          // Add empty values for HOLD columns (AC-AE)
-          rowData.push(...new Array(3).fill(""));
-        } else if (orderStatusData.orderStatus === "hold") {
-          // Add status first, then empty values for YES columns (Q-Z) and NO columns (AA-AB)
-          rowData.push(
-            orderStatusData.orderStatus, // Column P - Is Order Received? Status
-            ...new Array(9).fill("") // Empty values for columns Q-Z and AA-AB
-          );
-          // Add HOLD data for columns AC-AE
-          rowData.push(
-            orderStatusData.holdReason, // Column AC - Customer Order Hold Reason Category
-            orderStatusData.holdingDate, // Column AD - Holding Date
-            orderStatusData.holdRemark // Column AE - Hold Remark
-          );
-        } else {
-          // If no status selected, fill all columns with empty
-          rowData.push(...new Array(16).fill(""));
-        }
-      } else {
-        // Add empty values for all stage-specific columns (F-AE)
-        rowData.push(...new Array(26).fill(""));
-      }
-
-      console.log("Row Data to be submitted:", rowData);
-
-      // Script URL - replace with your Google Apps Script URL
-      const scriptUrl =
-        "https://script.google.com/macros/s/AKfycbyLTNpTAVKaVuGH_-GrVNxDOgXqbWiBYzdf8PQWWwIFhLiIz_1lT3qEQkl7BS1osfToGQ/exec";
-
-      // Parameters for Google Apps Script
-      const params = {
-        sheetName: "Enquiry Tracker",
-        action: "insert",
-        rowData: JSON.stringify(rowData),
-      };
-
-      // Create URL-encoded string for the parameters
-      const urlParams = new URLSearchParams();
-      for (const key in params) {
-        urlParams.append(key, params[key]);
-      }
-
-      // Send the data
-      const response = await fetch(scriptUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: urlParams,
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        showNotification("Call tracker updated successfully", "success");
-        navigate("/call-tracker");
-      } else {
-        showNotification(
-          "Error updating call tracker: " + (result.error || "Unknown error"),
-          "error"
-        );
-      }
-    } catch (error) {
-      console.error("Error submitting form:", error);
-      showNotification("Error submitting form: " + error.message, "error");
-    } finally {
-      setIsSubmitting(false);
     }
-  };
+
+    // Upload apology video if NO
+    if (currentStage === "order-status" && orderStatusData.orderStatus === "no") {
+      if (orderStatusData.apologyVideo) {
+        showNotification("Uploading apology video...", "info");
+        apologyVideoUrl = await uploadFileToDrive(orderStatusData.apologyVideo);
+        showNotification("Apology video uploaded", "success");
+      }
+    }
+
+    // Generate order number if YES
+    if (currentStage === "order-status" && orderStatusData.orderStatus === "yes") {
+      const latestOrderNumber = await getLatestOrderNumber();
+      orderNumber = generateNextOrderNumber(latestOrderNumber);
+    }
+
+    // ⭐ BUILD PAYLOAD FOR POSTGRES BACKEND
+    const payload = {
+      enquiry_no: formData.enquiryNo,
+      enquiry_status: formData.enquiryStatus,
+      what_did_customer_say: formData.customerFeedback,
+      current_stage: currentStage,
+
+      // ORDER EXPECTED
+      followup_status: orderExpectedData.followupStatus || null,
+      next_call_date: orderExpectedData.nextCallDate || null,
+      next_call_time: orderExpectedData.nextCallTime || null,
+
+      // ORDER STATUS YES
+      is_order_received_status: orderStatusData.orderStatus || null,
+      acceptance_via: orderStatusData.acceptanceVia || null,
+      payment_mode: orderStatusData.paymentMode || null,
+      // payment_terms_in_days: orderStatusData.paymentTerms || null,
+      payment_terms_in_days: orderStatusData.paymentTerms
+  ? parseInt(orderStatusData.paymentTerms.replace(/\D/g, "")) 
+  : null,
+      transport_mode: orderStatusData.transportMode || null,
+      po_number: orderStatusData.poNumber || null,
+      acceptance_file_upload: acceptanceFileUrl || null,
+      remark: orderStatusData.orderRemark || null,
+
+      // ORDER STATUS NO
+      if_no_relevant_reason_status: orderStatusData.reasonStatus || null,
+      if_no_relevant_reason_remark: orderStatusData.reasonRemark || null,
+
+      // ORDER HOLD
+      customer_order_hold_reason_category: orderStatusData.holdReason || null,
+      holding_date: orderStatusData.holdingDate || null,
+      hold_remark: orderStatusData.holdRemark || null,
+
+      // SALES DETAILS (Optional)
+      sales_cordinator: null,
+      calling_days: null,
+      // order_no: orderNumber || null,
+      party_name: null,
+      sales_person_name: null
+    };
+
+    console.log("Payload sending to backend:", payload);
+
+    // ⭐ SEND TO BACKEND AWS POSTGRES
+    // const response = await fetch("http://localhost:5050/api/enquiry-tracker-form", {
+    //   method: "POST",
+    //   headers: { "Content-Type": "application/json" },
+    //   body: JSON.stringify(payload)
+    // });
+    const response = await fetch(`${API_BASE_URL}/enquiry-tracker-form`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(payload)
+});
+
+    const result = await response.json();
+
+    if (result.success) {
+      showNotification("Enquiry tracker saved!", "success");
+      navigate("/call-tracker");
+    } else {
+      showNotification("Backend error: " + result.error, "error");
+    }
+
+  } catch (error) {
+    console.error("❌ Submit error:", error);
+    showNotification("Error: " + error.message, "error");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
 
   // Helper function to get the latest order number from the sheet
   const getLatestOrderNumber = async () => {

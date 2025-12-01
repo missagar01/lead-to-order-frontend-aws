@@ -17,125 +17,61 @@ function OrderStatusForm({ formData, onFieldChange, enquiryNo }) {
   const [creditLimitOptions, setCreditLimitOptions] = useState([])
 
   // Fetch dropdown options from DROPDOWN sheet
-  useEffect(() => {
-    const fetchDropdownOptions = async () => {
-      try {
-        setIsLoadingDropdowns(true)
+// Fetch dropdowns from backend instead of Google Sheet
+useEffect(() => {
+  const loadDropdowns = async () => {
+    try {
+      setIsLoadingDropdowns(true);
 
-        // Fetch data from DROPDOWN sheet
-        const dropdownUrl = "https://docs.google.com/spreadsheets/d/1bLTwtlHUmADSOyXJBxQJ2sxEy-dII8v2aGCDYuqppx4/gviz/tq?tqx=out:json&sheet=DROPDOWN"
-        const response = await fetch(dropdownUrl)
-        const text = await response.text()
+      const apiBase = "http://localhost:5050/api/enquiry-tracker-form-dropdowns";
 
-        // Extract the JSON part from the response
-        const jsonStart = text.indexOf('{')
-        const jsonEnd = text.lastIndexOf('}') + 1
-        const jsonData = text.substring(jsonStart, jsonEnd)
-
-        const data = JSON.parse(jsonData)
-
-        if (data && data.table && data.table.rows) {
-          // For Acceptance Via options (column H = index 7)
-          const acceptanceOptions = []
-          // For Payment Mode options (column I = index 8)
-          const paymentOptions = []
-          // For Reason Status options (column J = index 9)
-          const reasonOptions = []
-          // For Hold Reason options (column K = index 10)
-          const holdOptions = []
-          // For Payment Terms options (column BS = index 71)
-          const paymentTermsOptions = []
-          // For Conveyed options (column BT = index 72)
-          const conveyedOptions = []
-          // For Transport Mode options (column BN = index 65)
-          const transportOptions = []
-
-          const creditDaysOptions = []
-          // For Credit Limit options (column CE = index 82)
-          const creditLimitOptions = []
-
-          // 3. In the forEach loop inside fetchDropdownOptions, add these extractions:
-          // Extract column CD values (index 81)
+      const columns = [
+  "acceptance_via",
+  "payment_mode",
+  "not_received_reason_status",
+  "hold_reason_category",
+  "payment_terms_days",
+  "transport_mode"
+];
 
 
-          // Skip the header row (index 0)
-          data.table.rows.slice(0).forEach(row => {
-            // Extract column H values (index 7)
-            if (row.c && row.c[7] && row.c[7].v) {
-              acceptanceOptions.push(row.c[7].v)
-            }
-
-            if (row.c && row.c[81] && row.c[81].v) {
-              creditDaysOptions.push(row.c[81].v)
-            }
-
-            // Extract column CE values (index 82)
-            if (row.c && row.c[82] && row.c[82].v) {
-              creditLimitOptions.push(row.c[82].v)
-            }
-
-            // Extract column I values (index 8)
-            if (row.c && row.c[8] && row.c[8].v) {
-              paymentOptions.push(row.c[8].v)
-            }
-
-            // Extract column J values (index 9)
-            if (row.c && row.c[9] && row.c[9].v) {
-              reasonOptions.push(row.c[9].v)
-            }
-
-            // Extract column K values (index 10)
-            if (row.c && row.c[10] && row.c[10].v) {
-              holdOptions.push(row.c[10].v)
-            }
-
-            // Extract column BS values (index 71)
-            if (row.c && row.c[70] && row.c[70].v) {
-              paymentTermsOptions.push(row.c[70].v)
-            }
-
-            // Extract column BT values (index 72)
-            if (row.c && row.c[71] && row.c[71].v) {
-              conveyedOptions.push(row.c[71].v)
-            }
-
-            // Extract column BN values (index 65)
-            if (row.c && row.c[65] && row.c[65].v) {
-              transportOptions.push(row.c[65].v)
-            }
-          })
-
-          setAcceptanceViaOptions(acceptanceOptions)
-          setPaymentModeOptions(paymentOptions)
-          setReasonStatusOptions(reasonOptions)
-          setHoldReasonOptions(holdOptions)
-          setPaymentTermsOptions(paymentTermsOptions)
-          setConveyedOptions(conveyedOptions)
-          setTransportModeOptions(transportOptions)
-          setCreditDaysOptions(creditDaysOptions)
-          setCreditLimitOptions(creditLimitOptions)
-
+      const fetchColumn = async (col) => {
+        try {
+          const res = await fetch(`${apiBase}/${col}`);
+          const json = await res.json();
+          if (json.success) return json.values;
+          return [];
+        } catch (err) {
+          console.error(`Failed fetching ${col}:`, err);
+          return [];
         }
-      } catch (error) {
-        console.error("Error fetching dropdown options:", error)
-        // Fallback options if fetch fails
-        setAcceptanceViaOptions(["email", "phone", "in-person", "other"])
-        setPaymentModeOptions(["cash", "check", "bank-transfer", "credit-card"])
-        setReasonStatusOptions(["price", "competitor", "timeline", "specifications", "other"])
-        setHoldReasonOptions(["budget", "approval", "project-delay", "reconsideration", "other"])
-        setPaymentTermsOptions(["30", "45", "60", "90"])
-        setConveyedOptions(["Yes", "No"])
-        setTransportModeOptions(["Road", "Air", "Sea", "Rail"])
-        setCreditDaysOptions(["30", "45", "60", "90"])
-        setCreditLimitOptions(["10000", "25000", "50000", "100000"])
+      };
 
-      } finally {
-        setIsLoadingDropdowns(false)
-      }
+      const [
+        acceptanceVia,
+        paymentMode,
+        reasonStatus,
+        holdReason,
+        paymentTerms,
+        transportMode
+      ] = await Promise.all(columns.map(col => fetchColumn(col)));
+
+      setAcceptanceViaOptions(acceptanceVia);
+      setPaymentModeOptions(paymentMode);
+      setReasonStatusOptions(reasonStatus);
+      setHoldReasonOptions(holdReason);
+      setPaymentTermsOptions(paymentTerms);
+      setTransportModeOptions(transportMode);
+    } catch (err) {
+      console.error("Dropdown fetch error:", err);
+    } finally {
+      setIsLoadingDropdowns(false);
     }
+  };
 
-    fetchDropdownOptions()
-  }, [])
+  loadDropdowns();
+}, []);
+
 
   // Fetch quotation numbers for the given enquiry number
   useEffect(() => {

@@ -33,65 +33,32 @@ function NewFollowUp() {
   const [nobOptions, setNobOptions] = useState([])
   const [enquiryApproachOptions, setEnquiryApproachOptions] = useState([])
 
+
+  const API_BASE_URL = import.meta.env.VITE_API_URL;
+
   // Function to fetch dropdown data from DROPDOWNSHEET
   // Function to fetch dropdown data from DROPDOWNSHEET
-  const fetchDropdownData = async () => {
-    try {
-      const publicUrl =
-        "https://docs.google.com/spreadsheets/d/1bLTwtlHUmADSOyXJBxQJ2sxEy-dII8v2aGCDYuqppx4/gviz/tq?tqx=out:json&sheet=DROPDOWN"
+const fetchDropdownData = async () => {
+  try {
+    // const res = await fetch("http://localhost:5050/api/followupform-dropdown/followup/dropdowns");
+    const res = await fetch(`${API_BASE_URL}/followupform-dropdown/followup/dropdowns`);
+    const result = await res.json();
 
-      const response = await fetch(publicUrl)
-      const text = await response.text()
-
-      const jsonStart = text.indexOf("{")
-      const jsonEnd = text.lastIndexOf("}") + 1
-      const jsonData = text.substring(jsonStart, jsonEnd)
-
-      const data = JSON.parse(jsonData)
-
-      if (data && data.table && data.table.rows) {
-        const states = []
-        const types = []
-        const categories = []
-        const nobs = []
-        const approaches = [] // New array for enquiry approaches
-        const feedbackOptions = [] // New array for customer feedback (column CG - index 86)
-
-
-        data.table.rows.slice(0).forEach((row) => {
-          // Existing column processing...
-          if (row.c && row.c[2] && row.c[2].v) states.push(row.c[2].v.toString())
-          if (row.c && row.c[3] && row.c[3].v) types.push(row.c[3].v.toString())
-          if (row.c && row.c[76] && row.c[76].v) categories.push(row.c[76].v.toString())
-          if (row.c && row.c[37] && row.c[37].v) nobs.push(row.c[37].v.toString())
-            // Add column CG (index 86) processing for customer feedback options
-          
-          // Add column AM (index 38) processing
-          if (row.c && row.c[38] && row.c[38].v) {
-            approaches.push(row.c[38].v.toString())
-          }
-          if (row.c && row.c[84] && row.c[84].v) {
-            feedbackOptions.push(row.c[84].v.toString())
-          }
-        })
-
-        setEnquiryStates(states)
-        setSalesTypes(types)
-        setProductCategories(categories)
-        setNobOptions(nobs)
-        setEnquiryApproachOptions(approaches) // Set the new state
-        setCustomerFeedbackOptions(feedbackOptions) // Set the customer feedback options
-      }
-    } catch (error) {
-      console.error("Error fetching dropdown values:", error)
-      // Fallback values
-      setEnquiryStates(["Maharashtra", "Gujarat", "Karnataka", "Tamil Nadu", "Delhi"])
-      setSalesTypes(["NBD", "CRR", "NBD_CRR"])
-      setProductCategories(["Product 1", "Product 2", "Product 3"])
-      setNobOptions(["NOB 1", "NOB 2", "NOB 3"])
-      setEnquiryApproachOptions(["Approach 1", "Approach 2", "Approach 3"]) // Fallback for enquiry approach
+    if (result.success) {
+      setCustomerFeedbackOptions(result.data.customerSay || []);
+      setEnquiryApproachOptions(result.data.enquiryApproach || []);
+      setProductCategories(result.data.productCategories || []);
     }
+  } catch (error) {
+    console.error("Error fetching dropdown values:", error);
+
+    // fallback
+    setCustomerFeedbackOptions([]);
+    setEnquiryApproachOptions([]);
+    setProductCategories([]);
   }
+};
+
 
   useEffect(() => {
     // Fetch dropdown data when component mounts
@@ -121,81 +88,70 @@ function NewFollowUp() {
     }, 0)
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setIsSubmitting(true)
-  
-    try {
-      const currentDate = new Date()
-      const formattedDate = formatDate(currentDate)
-  
-      // Prepare items as JSON format
-      const itemsJson = JSON.stringify(items.map(item => ({
-        name: item.name || "",
-        quantity: item.quantity || "0"
-      })))
-  
-      // Prepare base row data with only the specified columns
-      const rowData = [
-        formattedDate, // Timestamp
-        formData.leadNo, // Lead No.
-        document.getElementById("customerFeedback").value, // What did the customer say?
-        leadStatus, // Lead Status
-        enquiryStatus, // Enquiry Received Status
-        enquiryStatus === "yes" ? document.getElementById("enquiryDate").value : "", // Enquiry Received Date
-        enquiryStatus === "yes" ? formData.enquiryApproach : "", // Enquiry Approach
-        enquiryStatus === "yes" ? document.getElementById("enquiryValue").value : "", // Enquiry Approximate Value
-        enquiryStatus === "yes" ? itemsJson : "", // Item/Qty (JSON format)
-        enquiryStatus === "yes" ? calculateTotalQuantity().toString() : "", // Total qty
-        enquiryStatus === "expected" ? document.getElementById("nextAction").value : "", // Next Action
-        enquiryStatus === "expected" ? document.getElementById("nextCallDate").value : "", // Next Call Date
-        enquiryStatus === "expected" ? document.getElementById("nextCallTime").value : "", // Next Call Time
-        "" // Company Name (empty for now)
-      ]
-  
-      console.log("Row Data to be submitted:", rowData)
-  
-      // Script URL - replace with your Google Apps Script URL
-      const scriptUrl =
-        "https://script.google.com/macros/s/AKfycbyLTNpTAVKaVuGH_-GrVNxDOgXqbWiBYzdf8PQWWwIFhLiIz_1lT3qEQkl7BS1osfToGQ/exec"
-  
-      // Parameters for Google Apps Script
-      const params = {
-        sheetName: "Leads Tracker",
-        action: "insert",
-        rowData: JSON.stringify(rowData),
-      }
-  
-      // Create URL-encoded string for the parameters
-      const urlParams = new URLSearchParams()
-      for (const key in params) {
-        urlParams.append(key, params[key])
-      }
-  
-      // Send the data
-      const response = await fetch(scriptUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: urlParams,
-      })
-  
-      const result = await response.json()
-  
-      if (result.success) {
-        showNotification("Follow-up recorded successfully", "success")
-        navigate("/follow-up")
-      } else {
-        showNotification("Error recording follow-up: " + (result.error || "Unknown error"), "error")
-      }
-    } catch (error) {
-      console.error("Error submitting form:", error)
-      showNotification("Error submitting form: " + error.message, "error")
-    } finally {
-      setIsSubmitting(false)
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setIsSubmitting(true);
+
+  try {
+    const itemsJson = items.map(it => ({
+      name: it.name,
+      quantity: it.quantity
+    }));
+
+    const payload = {
+      leadNo: formData.leadNo,
+      customer_say: document.getElementById("customerFeedback").value,
+      lead_status: leadStatus,
+      enquiry_received_status: enquiryStatus,
+      enquiry_received_date:
+        enquiryStatus === "yes"
+          ? document.getElementById("enquiryDate").value
+          : null,
+      enquiry_approach:
+        enquiryStatus === "yes" ? formData.enquiryApproach : null,
+      project_value:
+        enquiryStatus === "yes"
+          ? document.getElementById("enquiryValue").value
+          : null,
+      item_qty: enquiryStatus === "yes" ? itemsJson : [],
+      total_qty:
+        enquiryStatus === "yes" ? calculateTotalQuantity() : 0,
+
+      next_action:
+        enquiryStatus === "expected"
+          ? document.getElementById("nextAction").value
+          : null,
+      next_call_date:
+        enquiryStatus === "expected"
+          ? document.getElementById("nextCallDate").value
+          : null,
+      next_call_time:
+        enquiryStatus === "expected"
+          ? document.getElementById("nextCallTime").value
+          : null
+    };
+
+    const res = await fetch(`${API_BASE_URL}/followup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const result = await res.json();
+
+    if (result.success) {
+      showNotification("Follow-up submitted successfully", "success");
+      navigate("/follow-up");
+    } else {
+      showNotification("Error: " + result.message, "error");
     }
+  } catch (error) {
+    showNotification("Error submitting: " + error.message, "error");
+  } finally {
+    setIsSubmitting(false);
   }
+};
+
 
   // Function to format date as dd/mm/yyyy
   const formatDate = (date) => {

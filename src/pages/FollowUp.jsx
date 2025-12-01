@@ -257,181 +257,205 @@ const formatItemQty = (itemQtyString) => {
   }
 
   // Function to fetch data from FMS and Leads Tracker sheets
-  useEffect(() => {
-    const fetchFollowUpData = async () => {
-      try {
-        setIsLoading(true)
+// useEffect(() => {
+//   const fetchFollowUpData = async () => {
+//     try {
+//       setIsLoading(true);
 
-        // Fetch data from FMS sheet for Pending Follow-ups
-        const pendingUrl =
-          "https://docs.google.com/spreadsheets/d/1bLTwtlHUmADSOyXJBxQJ2sxEy-dII8v2aGCDYuqppx4/gviz/tq?tqx=out:json&sheet=FMS"
-        const pendingResponse = await fetch(pendingUrl)
-        const pendingText = await pendingResponse.text()
+//       // 1️⃣ Fetch PENDING follow-ups from backend
+//       const pendingRes = await fetch("http://localhost:5050/api/followups/pending");
+//       const pendingJson = await pendingRes.json();
 
-        // Extract the JSON part from the FMS sheet response
-        const pendingJsonStart = pendingText.indexOf("{")
-        const pendingJsonEnd = pendingText.lastIndexOf("}") + 1
-        const pendingJsonData = pendingText.substring(pendingJsonStart, pendingJsonEnd)
+//       // 2️⃣ Fetch HISTORY follow-ups from backend
+//       const historyRes = await fetch("http://localhost:5050/api/followups/history");
+//       const historyJson = await historyRes.json();
 
-        const pendingData = JSON.parse(pendingJsonData)
+//       // 3️⃣ Map pending rows to frontend structure
+//       const pendingMapped = pendingJson.data.map((row) => ({
+//         id: row.id,
+//         leadId: row.lead_no,
+//         companyName: row.company_name,
+//         personName: row.salesperson_name,
+//         phoneNumber: row.phone_number,
+//         leadSource: row.lead_source,
+//         location: row.location,
+//         customerSay: row.customer_say,
+//         enquiryStatus: row.enquiry_status,
+//         timestamp: formatDateToDDMMYYYY(row.planned),
+//         createdAt: formatDateToDDMMYYYY(row.created_at),
+//         nextCallDate: formatDateToDDMMYYYY(row.next_call_date),
+//         nextCallTime: row.next_call_time,
+//         priority: determinePriority(row.lead_source),
+//         assignedTo: row.sc_name,
+//         itemQty: row.item_qty
+//       }));
 
-        // Fetch data from Leads Tracker sheet for History
-        const historyUrl =
-          "https://docs.google.com/spreadsheets/d/1bLTwtlHUmADSOyXJBxQJ2sxEy-dII8v2aGCDYuqppx4/gviz/tq?tqx=out:json&sheet=Leads Tracker"
-        const historyResponse = await fetch(historyUrl)
-        const historyText = await historyResponse.text()
+//       // 4️⃣ Map history rows to frontend structure
+//       const historyMapped = historyJson.data.map((row) => ({
+//         timestamp: formatDateToDDMMYYYY(row.created_at),
+//         leadNo: row.lead_no,
+//         companyName: row.company_name,
+//         customerSay: row.customer_say,
+//         status: row.status,
+//         enquiryReceivedStatus: row.enquiry_received_status,
+//         enquiryReceivedDate: formatDateToDDMMYYYY(row.enquiry_received_date),
+//         enquiryState: row.enquiry_approach,
+//         projectName: row.project_name,
+//         salesType: row.sales_type,
+//         requiredProductDate: formatDateToDDMMYYYY(row.required_product_date),
+//         projectApproxValue: row.project_approx_value,
+//         itemName1: row.item_name_1,
+//         quantity1: row.qty_1,
+//         itemName2: row.item_name_2,
+//         quantity2: row.qty_2,
+//         itemName3: row.item_name_3,
+//         quantity3: row.qty_3,
+//         nextAction: row.next_action,
+//         nextCallDate: formatDateToDDMMYYYY(row.next_call_date),
+//         nextCallTime: row.next_call_time,
+//         assignedTo: row.sc_name,
+//         itemQty: row.item_qty
+//       }));
 
-        // Extract the JSON part from the Leads Tracker sheet response
-        const historyJsonStart = historyText.indexOf("{")
-        const historyJsonEnd = historyText.lastIndexOf("}") + 1
-        const historyJsonData = historyText.substring(historyJsonStart, historyJsonEnd)
+//       setPendingFollowUps(pendingMapped);
+//       setHistoryFollowUps(historyMapped);
+//     } catch (error) {
+//       console.error("API Fetch Error:", error);
+//     } finally {
+//       setIsLoading(false);
+//     }
+//   };
 
-        const historyData = JSON.parse(historyJsonData)
+//   fetchFollowUpData();
+// }, [currentUser, isAdmin]);
 
-        // Process Pending Follow-ups from FMS sheet
-        if (pendingData && pendingData.table && pendingData.table.rows) {
-          const pendingFollowUpData = []
+// Function to fetch data from FMS and Leads Tracker sheets
+useEffect(() => {
+  const fetchFollowUpData = async () => {
+    try {
+      setIsLoading(true);
 
-          // Skip the header row (index 0)
-          pendingData.table.rows.slice(0).forEach((row) => {
-            if (row.c) {
-              // Check if column K (index 10) has data and column L (index 11) is null
-              const hasColumnK = row.c[13] && row.c[13].v
-              const isColumnLEmpty = !row.c[14] || row.c[14].v === null || row.c[14].v === ""
-
-              // Get the assigned user
-              const assignedUser = row.c[72] ? row.c[72].v : ""
-
-              // For admin users, include all rows; for regular users, filter by their username
-              const shouldInclude = isAdmin() || (currentUser && assignedUser === currentUser.username)
-
-              // Only include rows where column K has data, column L is null/empty, and user has access
-              if (hasColumnK && isColumnLEmpty && shouldInclude) {
-                const followUpItem = {
-                  // timestamp: row.c[50] ? formatDateToDDMMYYYY(row.c[50].v) : "", // Column A (index 0)
-                  timestamp: row.c[35] ? formatDateToDDMMYYYY(row.c[35].v) : "", // Column A (index 0)
-                  id: row.c[0] ? row.c[0].v : "",
-                  leadId: row.c[1] ? row.c[1].v : "",
-                  companyName: row.c[4] ? row.c[4].v : "",
-                  personName: row.c[6] ? row.c[6].v : "",
-                  phoneNumber: row.c[5] ? row.c[5].v : "", // Added phone number from column F (index 5)
-                  leadSource: row.c[3] ? row.c[3].v : "",
-                  location: row.c[7] ? row.c[7].v : "",
-                  customerSay: row.c[17] ? row.c[17].v : "",
-                  enquiryStatus: row.c[18] ? row.c[18].v : "",
-                  createdAt: row.c[0] ? row.c[0].v : "",
-                  nextCallDate: row.c[89] ? row.c[89].v : "", // Column CL (index 89) for date filtering
-                  priority: determinePriority(row.c[3] ? row.c[3].v : ""),
-                  assignedTo: assignedUser, // Add assigned user to the follow-up item
-                  itemQty: row.c[22] ? row.c[22].v : "",
-                }
-
-                pendingFollowUpData.push(followUpItem)
-              }
-            }
-          })
-
-          setPendingFollowUps(pendingFollowUpData)
-        }
-
-        // Process History Follow-ups from Leads Tracker sheet
-        // Process History Follow-ups from Leads Tracker sheet
-        if (historyData && historyData.table && historyData.table.rows) {
-          const historyFollowUpData = []
-
-          historyData.table.rows.slice(0).forEach((row) => {
-            if (row.c) {
-              // Get the assigned user from column Y (index 24)
-              const assignedUser = row.c[24] ? row.c[24].v : ""
-
-              // For admin users, include all rows; for regular users, filter by their username
-              const shouldInclude = isAdmin() || (currentUser && assignedUser === currentUser.username)
-
-              if (shouldInclude) {
-                const followUpItem = {
-                  timestamp: row.c[0] ? formatDateToDDMMYYYY(row.c[0].v) : "", // Column A (index 0)
-                  leadNo: row.c[1] ? row.c[1].v : "",
-                  companyName: row.c[2] ? row.c[2].v : "", // Column AA (index 26)
-                  customerSay: row.c[3] ? row.c[3].v : "",
-                  status: row.c[4] ? row.c[4].v : "",
-                  enquiryReceivedStatus: row.c[5] ? row.c[5].v : "",
-                  enquiryReceivedDate: row.c[5] ? formatDateToDDMMYYYY(row.c[5] ? row.c[5].v : "") : "",
-                  enquiryState: row.c[6] ? row.c[6].v : "",
-                  projectName: row.c[7] ? row.c[7].v : "",
-                  salesType: row.c[8] ? row.c[8].v : "",
-                  requiredProductDate: row.c[9] ? formatDateToDDMMYYYY(row.c[9] ? row.c[9].v : "") : "",
-                  projectApproxValue: row.c[9] ? row.c[9].v : "",
-                  itemName1: row.c[10] ? row.c[10].v : "",
-                  quantity1: row.c[11] ? row.c[11].v : "",
-                  itemName2: row.c[12] ? row.c[12].v : "",
-                  quantity2: row.c[13] ? row.c[13].v : "",
-                  itemName3: row.c[14] ? row.c[14].v : "",
-                  quantity3: row.c[15] ? row.c[15].v : "",
-                  itemName4: row.c[17] ? row.c[17].v : "",
-                  quantity4: row.c[18] ? row.c[18].v : "",
-                  itemName5: row.c[19] ? row.c[19].v : "",
-                  quantity5: row.c[20] ? row.c[20].v : "",
-                  nextAction: row.c[21] ? row.c[21].v : "",
-                  nextCallDate: row.c[22] ? formatDateToDDMMYYYY(row.c[22] ? row.c[22].v : "") : "",
-                  nextCallTime: row.c[23] ? formatNextCallTime(row.c[23].v) : "",
-                  historyDateFilter: row.c[25] ? row.c[25].v : "",
-                  assignedTo: assignedUser, // Add assigned user to the history item
-                  itemQty: row.c[28] ? row.c[28].v : "", // Add this line - Column AC (index 28)
-                }
-
-                historyFollowUpData.push(followUpItem)
-              }
-            }
-          })
-
-          setHistoryFollowUps(historyFollowUpData)
-        }
-      } catch (error) {
-        console.error("Error fetching follow-up data:", error)
-        // Fallback to mock data if fetch fails
-        setPendingFollowUps([
-          {
-            id: "1",
-            leadId: "LD-001",
-            companyName: "ABC Corp",
-            personName: "John Smith",
-            phoneNumber: "9876543210", // Added sample phone number
-            leadSource: "Indiamart",
-            location: "Mumbai",
-            customerSay: "Interested in product details",
-            enquiryStatus: "New",
-            createdAt: "2023-05-15",
-            nextCallDate: "Date(2025,4,27)", // Sample date for testing
-            priority: "High",
-          },
-        ])
-
-        setHistoryFollowUps([
-          {
-            leadNo: "LD-001",
-            customerSay: "Interested in product details",
-            status: "Pending",
-            enquiryReceivedStatus: "New",
-            enquiryReceivedDate: "15/05/2023",
-            enquiryState: "Maharashtra",
-            projectName: "Sample Project",
-            salesType: "Direct",
-            requiredProductDate: "15/06/2023",
-            projectApproxValue: "₹500,000",
-            itemName1: "Product A",
-            quantity1: "10",
-            nextAction: "Follow-up call",
-            nextCallDate: "20/05/2023",
-            nextCallTime: "10:00 AM",
-          },
-        ])
-      } finally {
-        setIsLoading(false)
+      // Get token from localStorage
+      const token = localStorage.getItem("token");
+      
+      if (!token) {
+        console.error("No token found");
+        setIsLoading(false);
+        return;
       }
-    }
 
-    fetchFollowUpData()
-  }, [currentUser, isAdmin]) // Add isAdmin to dependencies
+      const API_BASE_URL = import.meta.env.VITE_API_URL;
+
+      // 1️⃣ Fetch PENDING follow-ups from backend with auth header
+      // const pendingRes = await fetch("http://localhost:5050/api/followups/pending", {
+      //   headers: {
+      //     "Authorization": `Bearer ${token}`,
+      //     "Content-Type": "application/json"
+      //   }
+      // });
+
+       const pendingRes = await fetch(`${API_BASE_URL}/followups/pending`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      });
+
+      if (!pendingRes.ok) {
+        if (pendingRes.status === 401) {
+          // Token expired, redirect to login
+          localStorage.removeItem("token");
+          localStorage.removeItem("currentUser");
+          window.location.href = "/login";
+          return;
+        }
+        throw new Error(`HTTP error! status: ${pendingRes.status}`);
+      }
+
+      const pendingJson = await pendingRes.json();
+
+      // 2️⃣ Fetch HISTORY follow-ups from backend with auth header
+      // const historyRes = await fetch("http://localhost:5050/api/followups/history", {
+      //   headers: {
+      //     "Authorization": `Bearer ${token}`,
+      //     "Content-Type": "application/json"
+      //   }
+      // });
+
+
+      const historyRes = await fetch(`${API_BASE_URL}/followups/history`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      });
+
+      if (!historyRes.ok) {
+        throw new Error(`HTTP error! status: ${historyRes.status}`);
+      }
+
+      const historyJson = await historyRes.json();
+
+      // 3️⃣ Map pending rows to frontend structure
+      const pendingMapped = pendingJson.data.map((row) => ({
+        id: row.id,
+        leadId: row.lead_no,
+        companyName: row.company_name,
+        personName: row.salesperson_name,
+        phoneNumber: row.phone_number,
+        leadSource: row.lead_source,
+        location: row.location,
+        customerSay: row.customer_say,
+        enquiryStatus: row.enquiry_status,
+        timestamp: formatDateToDDMMYYYY(row.planned),
+        createdAt: formatDateToDDMMYYYY(row.created_at),
+        nextCallDate: formatDateToDDMMYYYY(row.next_call_date),
+        nextCallTime: row.next_call_time,
+        priority: determinePriority(row.lead_source),
+        assignedTo: row.sc_name,
+        itemQty: row.item_qty
+      }));
+
+      // 4️⃣ Map history rows to frontend structure
+      const historyMapped = historyJson.data.map((row) => ({
+        timestamp: formatDateToDDMMYYYY(row.created_at),
+        leadNo: row.lead_no,
+        companyName: row.company_name,
+        customerSay: row.customer_say,
+        status: row.status,
+        enquiryReceivedStatus: row.enquiry_received_status,
+        enquiryReceivedDate: formatDateToDDMMYYYY(row.enquiry_received_date),
+        enquiryState: row.enquiry_approach,
+        projectApproxValue: row.project_approx_value,
+        itemQty: row.item_qty,
+        totalQty: row.total_qty,
+        nextAction: row.next_action,
+        nextCallDate: formatDateToDDMMYYYY(row.next_call_date),
+        nextCallTime: row.next_call_time,
+        phoneNumber: row.phone_number,
+        salesPersonName: row.salesperson_name,
+        location: row.location,
+        assignedTo: row.sc_name
+      }));
+
+      setPendingFollowUps(pendingMapped);
+      setHistoryFollowUps(historyMapped);
+      
+      // Log user info
+      console.log("User type:", pendingJson.userType);
+      console.log("Username:", pendingJson.username);
+
+    } catch (error) {
+      console.error("API Fetch Error:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (currentUser) {
+    fetchFollowUpData();
+  }
+}, [currentUser, isAdmin]);
 
   // Add this function or modify the existing formatDateToDDMMYYYY function
   const formatPopupDate = (dateValue) => {

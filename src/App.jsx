@@ -9,7 +9,6 @@ import FollowUp from "./pages/FollowUp"
 import NewFollowUp from "./pages/NewFollowUp"
 import CallTracker from "./pages/CallTracker"
 import NewCallTracker from "./pages/NewCallTracker"
-// import Quotation from "./pages/Quotation"
 import Quotation from "./pages/Quotation/Quotation"
 import MainNav from "./components/MainNav"
 import Footer from "./components/Footer"
@@ -20,134 +19,162 @@ export const AuthContext = createContext(null)
 // Create data context to manage data access based on user type
 export const DataContext = createContext(null)
 
+// API base URL - change this to match your backend
+// const API_BASE_URL = "http://localhost:5050/api" // Your backend port
+const API_BASE_URL = import.meta.env.VITE_API_URL;
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [notification, setNotification] = useState(null)
   const [currentUser, setCurrentUser] = useState(null)
   const [userType, setUserType] = useState(null)
   const [userData, setUserData] = useState(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
 
-  // Check if user is already logged in
+  // Check if user is already logged in on app load
   useEffect(() => {
-    const auth = localStorage.getItem("isAuthenticated")
-    const storedUser = localStorage.getItem("currentUser")
-    const storedUserType = localStorage.getItem("userType")
-    
-    if (auth === "true" && storedUser) {
-      setIsAuthenticated(true)
-      setCurrentUser(JSON.parse(storedUser))
-      setUserType(storedUserType)
-      // Fetch data based on user type
-      fetchUserData(JSON.parse(storedUser).username, storedUserType)
-    }
+    checkAuthStatus()
   }, [])
 
-  // Function to fetch data based on user type
-  const fetchUserData = async (username, userType) => {
-    try {
-      // Example: Fetch data from Google Sheet
-      const dataUrl = "https://docs.google.com/spreadsheets/d/1bLTwtlHUmADSOyXJBxQJ2sxEy-dII8v2aGCDYuqppx4/gviz/tq?tqx=out:json&sheet=Data"
-      const response = await fetch(dataUrl)
-      const text = await response.text()
-      
-      // Extract JSON from response
-      const jsonStart = text.indexOf('{')
-      const jsonEnd = text.lastIndexOf('}') + 1
-      const jsonData = text.substring(jsonStart, jsonEnd)
-      const data = JSON.parse(jsonData)
-      
-      if (!data || !data.table || !data.table.rows) {
-        showNotification("Failed to fetch data", "error")
-        return
-      }
-      
-      // Filter data based on user type
-      if (userType === "admin") {
-        // Admin sees all data
-        setUserData(data.table.rows)
-      } else {
-        // Regular user only sees their own data
-        const filteredData = data.table.rows.filter(row => 
-          row.c && row.c[0] && row.c[0].v === username
-        )
-        setUserData(filteredData)
-      }
-    } catch (error) {
-      console.error("Data fetching error:", error)
-      showNotification("An error occurred while fetching data", "error")
-    }
-  }
-
-  const login = async (username, password) => {
-    try {
-      // Fetch user credentials from Google Sheet
-      const loginUrl = "https://docs.google.com/spreadsheets/d/1bLTwtlHUmADSOyXJBxQJ2sxEy-dII8v2aGCDYuqppx4/gviz/tq?tqx=out:json&sheet=Login"
-      const response = await fetch(loginUrl)
-      const text = await response.text()
-      
-      // Extract JSON from response
-      const jsonStart = text.indexOf('{')
-      const jsonEnd = text.lastIndexOf('}') + 1
-      const jsonData = text.substring(jsonStart, jsonEnd)
-      const data = JSON.parse(jsonData)
-      
-      if (!data || !data.table || !data.table.rows) {
-        showNotification("Failed to fetch user data", "error")
-        return false
-      }
-      
-      // Find matching user
-      let foundUser = null
-      data.table.rows.forEach(row => {
-        if (row.c && 
-            row.c[0] && row.c[0].v === username && 
-            row.c[1] && row.c[1].v === password) {
-          foundUser = {
-            username: row.c[0].v,
-            userType: row.c[2] ? row.c[2].v : "user" // Default to "user" if type is not specified
+  const checkAuthStatus = async () => {
+    const token = localStorage.getItem("token")
+    const storedUser = localStorage.getItem("currentUser")
+    
+    if (token && storedUser) {
+      try {
+        // Verify token with backend
+        const response = await fetch(`${API_BASE_URL}/auth/verify-token`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
           }
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success) {
+            setIsAuthenticated(true)
+            const parsedUser = JSON.parse(storedUser)
+            setCurrentUser(parsedUser)
+            setUserType(parsedUser.userType)
+            // Fetch user data
+            fetchUserData()
+          } else {
+            // Token is invalid, clear storage
+            clearAuthData()
+          }
+        } else {
+          // Token verification failed, clear storage
+          clearAuthData()
         }
-      })
-      
-      if (foundUser) {
-        // Store user info
-        const userInfo = {
-          username: foundUser.username,
-          loginTime: new Date().toISOString()
-        }
-        
-        setIsAuthenticated(true)
-        setCurrentUser(userInfo)
-        setUserType(foundUser.userType)
-        
-        localStorage.setItem("isAuthenticated", "true")
-        localStorage.setItem("currentUser", JSON.stringify(userInfo))
-        localStorage.setItem("userType", foundUser.userType)
-        
-        // Fetch data based on user type
-        await fetchUserData(foundUser.username, foundUser.userType)
-        
-        showNotification(`Welcome, ${username}! (${foundUser.userType})`, "success")
-        return true
-      } else {
-        showNotification("Invalid credentials", "error")
-        return false
+      } catch (error) {
+        console.error("Auth check error:", error)
+        clearAuthData()
       }
-    } catch (error) {
-      console.error("Login error:", error)
-      showNotification("An error occurred during login", "error")
-      return false
     }
+    setAuthChecked(true)
   }
 
-  const logout = () => {
+  const clearAuthData = () => {
+    localStorage.removeItem("token")
+    localStorage.removeItem("currentUser")
+    localStorage.removeItem("userType")
     setIsAuthenticated(false)
     setCurrentUser(null)
     setUserType(null)
     setUserData(null)
-    localStorage.removeItem("isAuthenticated")
-    localStorage.removeItem("currentUser")
-    localStorage.removeItem("userType")
+  }
+
+  // Function to fetch data from PostgreSQL backend
+  const fetchUserData = async () => {
+    const token = localStorage.getItem("token")
+    if (!token) return
+
+    setIsLoading(true)
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/data`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      })
+
+      const data = await response.json()
+      
+      if (data.success) {
+        setUserData(data.data)
+      } else {
+        showNotification(data.message || "Failed to fetch data", "error")
+      }
+    } catch (error) {
+      console.error("Data fetching error:", error)
+      showNotification("An error occurred while fetching data", "error")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+const login = async (username, password) => {
+  setIsLoading(true)
+  try {
+    console.log("Attempting login for:", username);
+    
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ username, password }),
+    })
+
+    console.log("Login response status:", response.status);
+    
+    // Get the response text to see what the backend is sending
+    const responseText = await response.text();
+    console.log("Login response text:", responseText);
+    
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error("Failed to parse response:", parseError);
+      showNotification("Server returned invalid response", "error");
+      return false;
+    }
+    
+    if (response.ok && data.success) {
+      // Store token and user info
+      localStorage.setItem("token", data.token)
+      localStorage.setItem("currentUser", JSON.stringify(data.user))
+      localStorage.setItem("userType", data.user.userType)
+      
+      setIsAuthenticated(true)
+      setCurrentUser(data.user)
+      setUserType(data.user.userType)
+      
+      // Fetch user data
+      await fetchUserData()
+      
+      showNotification(`Welcome, ${username}! (${data.user.userType})`, "success")
+      return true
+    } else {
+      showNotification(data.message || "Invalid credentials", "error")
+      return false
+    }
+  } catch (error) {
+    console.error("Login error:", error)
+    showNotification("An error occurred during login", "error")
+    return false
+  } finally {
+    setIsLoading(false)
+  }
+}
+
+  const logout = () => {
+    clearAuthData()
     showNotification("Logged out successfully", "success")
   }
 
@@ -165,6 +192,12 @@ function App() {
 
   // Protected route component
   const ProtectedRoute = ({ children, adminOnly = false }) => {
+    if (!authChecked) {
+      return <div className="min-h-screen flex items-center justify-center">
+        <div className="text-lg">Loading...</div>
+      </div>
+    }
+    
     if (!isAuthenticated) {
       return <Navigate to="/login" />
     }
@@ -186,7 +219,9 @@ function App() {
       showNotification, 
       currentUser, 
       userType, 
-      isAdmin: isAdmin 
+      isAdmin: isAdmin,
+      isLoading,
+      fetchUserData
     }}>
       <DataContext.Provider value={{ userData, fetchUserData }}>
         <Router>

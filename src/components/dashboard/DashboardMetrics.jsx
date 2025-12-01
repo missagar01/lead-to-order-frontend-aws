@@ -1,11 +1,11 @@
-// DashboardMetrics.jsx - Updated to show user-specific data
-
+// DashboardMetrics.jsx - Updated for backend
 import { useState, useEffect, useContext } from "react"
 import { UsersIcon, PhoneCallIcon, FileTextIcon, ShoppingCartIcon, TrendingUpIcon, AlertCircleIcon } from "../Icons"
-import { AuthContext } from "../../App" // Import AuthContext
+import { AuthContext } from "../../App"
+import { fetchDashboardMetrics } from "./dashboard-api.js" // Import the API function
 
 function DashboardMetrics() {
-  const { currentUser, userType, isAdmin } = useContext(AuthContext) // Get user info and admin function
+  const { currentUser, userType, isAdmin } = useContext(AuthContext)
   const [metrics, setMetrics] = useState({
     totalLeads: "0",
     pendingFollowups: "0",
@@ -22,168 +22,25 @@ function DashboardMetrics() {
       try {
         setIsLoading(true)
         
-        // FMS sheet - For total leads (column B) and pending follow-ups (column K not null and column L null)
-        const fmsUrl = "https://docs.google.com/spreadsheets/d/1bLTwtlHUmADSOyXJBxQJ2sxEy-dII8v2aGCDYuqppx4/gviz/tq?tqx=out:json&sheet=FMS"
-        const fmsResponse = await fetch(fmsUrl)
-        const fmsText = await fmsResponse.text()
+        // Use the backend API instead of Google Sheets
+        const metricsData = await fetchDashboardMetrics(
+          currentUser?.username || currentUser?.id, 
+          isAdmin()
+        )
         
-        // Extract JSON from FMS sheet response
-        const fmsJsonStart = fmsText.indexOf('{')
-        const fmsJsonEnd = fmsText.lastIndexOf('}') + 1
-        const fmsJsonData = fmsText.substring(fmsJsonStart, fmsJsonEnd)
-        const fmsData = JSON.parse(fmsJsonData)
-        
-        // Make Quotation sheet - For quotations sent (count of rows in column B)
-        const quotationUrl = "https://docs.google.com/spreadsheets/d/1bLTwtlHUmADSOyXJBxQJ2sxEy-dII8v2aGCDYuqppx4/gviz/tq?tqx=out:json&sheet=Make Quotation"
-        const quotationResponse = await fetch(quotationUrl)
-        const quotationText = await quotationResponse.text()
-        
-        // Extract JSON from Make Quotation sheet response
-        const quotationJsonStart = quotationText.indexOf('{')
-        const quotationJsonEnd = quotationText.lastIndexOf('}') + 1
-        const quotationJsonData = quotationText.substring(quotationJsonStart, quotationJsonEnd)
-        const quotationData = JSON.parse(quotationJsonData)
-
-        const enquiryUrl1 = "https://docs.google.com/spreadsheets/d/1bLTwtlHUmADSOyXJBxQJ2sxEy-dII8v2aGCDYuqppx4/gviz/tq?tqx=out:json&sheet=Enquiry Tracker"
-        const enquiryResponse1 = await fetch(enquiryUrl1)
-        const enquiryText1 = await enquiryResponse1.text()
-        
-        // Extract JSON from Enquiry Tracker sheet response
-        const enquiryJsonStart1 = enquiryText1.indexOf('{')
-        const enquiryJsonEnd1 = enquiryText1.lastIndexOf('}') + 1
-        const enquiryJsonData1 = enquiryText1.substring(enquiryJsonStart1, enquiryJsonEnd1)
-        const enquiryData1 = JSON.parse(enquiryJsonData1)
-        
-        // Enquiry to Order sheet - For total enquiry and pending enquiry
-        const enquiryUrl = "https://docs.google.com/spreadsheets/d/1bLTwtlHUmADSOyXJBxQJ2sxEy-dII8v2aGCDYuqppx4/gviz/tq?tqx=out:json&sheet=ENQUIRY TO ORDER"
-        const enquiryResponse = await fetch(enquiryUrl)
-        const enquiryText = await enquiryResponse.text()
-        
-        // Extract JSON from Enquiry to Order sheet response
-        const enquiryJsonStart = enquiryText.indexOf('{')
-        const enquiryJsonEnd = enquiryText.lastIndexOf('}') + 1
-        const enquiryJsonData = enquiryText.substring(enquiryJsonStart, enquiryJsonEnd)
-        const enquiryData = JSON.parse(enquiryJsonData)
-        
-        // Calculate metrics
-        let totalLeads = 0
-        let pendingFollowups = 0
-        let quotationsSent = 0
-        let ordersReceived = 0
-        let totalEnquiry = 0
-        let pendingEnquiry = 0
-        
-        // Count total leads from FMS sheet - Modified to filter by user
-        if (fmsData && fmsData.table && fmsData.table.rows) {
-          // For admin users, count all rows; for regular users, filter by their username in column CH (index 88)
-          totalLeads = fmsData.table.rows.filter((row, index) => {
-            // Get the assigned user 
-            const assignedUser = row.c && row.c[56] ? row.c[56].v : ""
-            
-            // Check if this row should be included based on user permissions
-            const shouldInclude = isAdmin() || (currentUser && assignedUser === currentUser.username)
-            
-            // Count rows starting from index 2 with data in column B (index 1)
-            return index >= 2 && row.c && row.c[1] && row.c[1].v && shouldInclude
-          }).length
-          
-          // Count pending follow-ups with user filtering
-          pendingFollowups = fmsData.table.rows.filter((row, index) => {
-            // Get the assigned user 
-            const assignedUser = row.c && row.c[56] ? row.c[56].v : ""
-            
-            // Check if this row should be included based on user permissions
-            const shouldInclude = isAdmin() || (currentUser && assignedUser === currentUser.username)
-            
-            // Filter for pending follow-ups
-            return index >= 2 && 
-                   row.c && 
-                   row.c[13] && row.c[13].v && 
-                   (!row.c[14] || !row.c[14].v) && 
-                   shouldInclude
-          }).length
-        }
-        
-        // Count quotations sent from Make Quotation sheet with user filtering
-        if (quotationData && quotationData.table && quotationData.table.rows) {
-          quotationsSent = quotationData.table.rows.filter(row => {
-            // Assuming the Make Quotation sheet has a user assignment column (adjust index as needed)
-            // Here, I'm assuming column Z (index 25) contains the username
-            const assignedUser = row.c && row.c[25] ? row.c[25].v : ""
-            
-            // Check if this row should be included based on user permissions
-            const shouldInclude = isAdmin() || (currentUser && assignedUser === currentUser.username)
-            
-            // Count all rows with data in column B (index 1)
-            return row.c && row.c[1] && row.c[1].v && shouldInclude
-          }).length
-        }
-        
-        // Count orders received from Enquiry Tracker sheet with user filtering
-        if (enquiryData1 && enquiryData1.table && enquiryData1.table.rows) {
-          ordersReceived = enquiryData1.table.rows.filter(row => {
-            // Assuming the Enquiry Tracker sheet has a user assignment column (adjust index as needed)
-            // Here, I'm assuming column AJ (index 35) contains the username
-            const assignedUser = row.c && row.c[28] ? row.c[28].v : ""
-            
-            // Check if this row should be included based on user permissions
-            const shouldInclude = isAdmin() || (currentUser && assignedUser === currentUser.username)
-            
-            // Count rows where column W (index 22) = "yes"
-            return row.c && 
-                   row.c[15] && 
-                   row.c[15].v && 
-                   row.c[15].v.toLowerCase() === "yes" &&
-                   shouldInclude
-          }).length
-        }
-        
-        // Count from Enquiry to Order sheet with user filtering - UPDATED TO START FROM ROW 7
-        if (enquiryData && enquiryData.table && enquiryData.table.rows) {
-          // Count total enquiries with user filtering - Start from index 6 (row 7)
-          totalEnquiry = enquiryData.table.rows.filter((row, index) => {
-            // Assuming the Enquiry to Order sheet has a user assignment column (adjust index as needed)
-            // Here, I'm assuming column AQ (index 42) contains the username
-            const assignedUser = row.c && row.c[42] ? row.c[42].v : ""
-            
-            // Check if this row should be included based on user permissions
-            const shouldInclude = isAdmin() || (currentUser && assignedUser === currentUser.username)
-            
-            // Count all rows starting from index 6 (row 7) with data in column B (index 1)
-            return index >= 6 && row.c && row.c[1] && row.c[1].v && shouldInclude
-          }).length
-          
-          // Count pending enquiries with user filtering - Start from index 6 (row 7)
-          pendingEnquiry = enquiryData.table.rows.filter((row, index) => {
-            // Get the assigned user
-            const assignedUser = row.c && row.c[41] ? row.c[41].v : ""
-            
-            // Check if this row should be included based on user permissions
-            const shouldInclude = isAdmin() || (currentUser && assignedUser === currentUser.username)
-            
-            // Count pending enquiries starting from index 6 (row 7) where column M (index 12) is not null and column N (index 13) is null
-            return index >= 6 && 
-                   row.c && 
-                   row.c[12] && row.c[12].v && 
-                   (!row.c[13] || !row.c[13].v) &&
-                   shouldInclude
-          }).length
-        }
-        
-        // Update metrics state
         setMetrics({
-          totalLeads: totalLeads.toString(),
-          pendingFollowups: pendingFollowups.toString(),
-          quotationsSent: quotationsSent.toString(),
-          ordersReceived: ordersReceived.toString(),
-          totalEnquiry: totalEnquiry.toString(),
-          pendingEnquiry: pendingEnquiry.toString()
+          totalLeads: metricsData.totalLeads.toString(),
+          pendingFollowups: metricsData.pendingFollowups.toString(),
+          quotationsSent: metricsData.quotationsSent.toString(),
+          ordersReceived: metricsData.ordersReceived.toString(),
+          totalEnquiry: metricsData.totalEnquiry.toString(),
+          pendingEnquiry: metricsData.pendingEnquiry.toString()
         })
         
       } catch (error) {
         console.error("Error fetching metrics:", error)
         setError(error.message)
-        // Use fallback demo values
+        // Fallback to demo values
         setMetrics({
           totalLeads: "124",
           pendingFollowups: "38",
@@ -197,15 +54,16 @@ function DashboardMetrics() {
       }
     }
     
-    fetchMetrics()
-  }, [currentUser, isAdmin]) // Add dependencies for user context
+    if (currentUser) {
+      fetchMetrics()
+    }
+  }, [currentUser, isAdmin])
 
   return (
     <div className="space-y-8">
       {/* Lead to Order Section */}
       <div>
         <div className="flex justify-between items-center mb-4">
-          {/* Display admin view indicator similar to FollowUp page */}
           {isAdmin() && <p className="text-green-600 font-semibold">Admin View: Showing all data</p>}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-6">
@@ -272,6 +130,8 @@ function DashboardMetrics() {
     </div>
   )
 }
+
+// MetricCard component remains the same...
 
 function MetricCard({ title, value, change, trend, icon, color }) {
   return (

@@ -11,12 +11,13 @@ const CallTrackerForm = ({ onClose = () => window.history.back() }) => {
   const [itemNameOptions, setItemNameOptions] = useState([])
   const [companyOptions, setCompanyOptions] = useState([]);
   const [locationOptions, setLocationOptions] = useState([]);
-  const [companyLocationMap, setCompanyLocationMap] = useState({}); // 👈 mapping ke liye
+  // const [companyLocationMap, setCompanyLocationMap] = useState({}); // 👈 mapping ke liye
   const [manualCompany, setManualCompany] = useState(""); // manual input ke liye
   const [isAddingLocation, setIsAddingLocation] = useState(false);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const locationDropdownRef = useRef(null);
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
+  const [directCompanyDetails, setDirectCompanyDetails] = useState({});
   const companyDropdownRef = useRef(null);
   const [formData, setFormData] = useState({
     scName: "",
@@ -124,109 +125,35 @@ const CallTrackerForm = ({ onClose = () => window.history.back() }) => {
   };
 
   // Function to fetch dropdown data from DROPDOWN sheet
-  const fetchDropdownData = async () => {
-    try {
-      const publicUrl =
-        "https://docs.google.com/spreadsheets/d/1bLTwtlHUmADSOyXJBxQJ2sxEy-dII8v2aGCDYuqppx4/gviz/tq?tqx=out:json&sheet=DROPDOWN";
+const fetchDropdownData = async () => {
+  try {
+        const baseURL = import.meta.env.VITE_API_URL || "http://localhost:5050";
+    // const res = await fetch("http://localhost:5050/api/direct-enquiry-form-dropdown");
+    const res = await fetch(`${baseURL}/direct-enquiry-form-dropdown`);
+    const json = await res.json();
 
-      const response = await fetch(publicUrl);
-      const text = await response.text();
+    if (!json.success) return;
 
-      const jsonStart = text.indexOf("{");
-      const jsonEnd = text.lastIndexOf("}") + 1;
-      const jsonData = text.substring(jsonStart, jsonEnd);
+    const data = json.data;
 
-      const data = JSON.parse(jsonData);
+    setLeadSources(data.leadSources);
+    setEnquiryApproachOptions(data.enquiryApproaches);
+    setScNames(data.scNames);
+    setReceiverOptions(data.receiverNames);
+    setCompanyOptions(data.directCompanyNames);
 
-      if (data && data.table && data.table.rows) {
-        const companyNames = []; // Column 49 (Company Name)
-        const locations = []; // Column 54 (Location)
-        const mapping = {}; // Company → Location map
+    setItemNameOptions(data.itemNames);
 
-        const scNamesData = []; // Column 36
-        const sources = []; // Column 1 (Lead Sources)
-        const approachOptions = []; // Column 38
-        const receivers = []; // Column 74
-        const itemNames = []; // Column 62
+    // ⭐ ADD THIS LINE HERE
+    setDirectCompanyDetails(data.directCompanyDetails);
+    setLocationOptions(data.locations);
 
-        data.table.rows.forEach((row) => {
-          if (row.c) {
-            // Column 49 → Company Name (index 48)
-            const company = row.c[49]?.v?.toString();
-            // Column 54 → Location (index 53)
-            const location = row.c[54]?.v?.toString();
+  } catch (error) {
+    console.error("Dropdown fetch error:", error);
+  }
+};
 
-            if (company) companyNames.push(company);
-            if (location) locations.push(location);
 
-            if (company && location) {
-              mapping[company] = location; // 👈 Map company → location
-            }
-
-            // Column 36 → SC Name
-            if (row.c[36] && row.c[36].v) {
-              scNamesData.push(row.c[36].v.toString());
-            }
-
-            // Column 1 (Lead Sources)
-            if (row.c[1] && row.c[1].v) {
-              sources.push(row.c[1].v.toString());
-            }
-
-            // Column 38 → Enquiry Approach
-            if (row.c[38] && row.c[38].v) {
-              approachOptions.push(row.c[38].v.toString());
-            }
-
-            // Column 62 → Item Names
-            if (row.c[62] && row.c[62].v) {
-              itemNames.push(row.c[62].v.toString());
-            }
-
-            // Column 74 → Receiver
-            if (row.c[74] && row.c[74].v) {
-              receivers.push(row.c[74].v.toString());
-            }
-          }
-        });
-
-        // ✅ Update states
-        setCompanyOptions([...new Set(companyNames.filter(Boolean))]);
-        setLocationOptions([...new Set(locations.filter(Boolean))]);
-        setCompanyLocationMap(mapping);
-
-        setScNames([...new Set(scNamesData.filter(Boolean))]);
-        setLeadSources([...new Set(sources.filter(Boolean))]);
-        setEnquiryApproachOptions([...new Set(approachOptions.filter(Boolean))]);
-        setReceiverOptions([...new Set(receivers.filter(Boolean))]);
-        setItemNameOptions([...new Set(itemNames.filter(Boolean))]);
-      }
-    } catch (error) {
-      console.error("Error fetching dropdown values:", error);
-
-      // ✅ Fallback values
-      setCompanyOptions(["Company 1", "Company 2", "Company 3"]);
-      setLocationOptions(["Location 1", "Location 2", "Location 3"]);
-      setCompanyLocationMap({
-        "Company 1": "Location 1",
-        "Company 2": "Location 2",
-        "Company 3": "Location 3",
-      });
-
-      setScNames(["SC-001", "SC-002", "SC-003"]);
-      setLeadSources([
-        "Website",
-        "Justdial",
-        "Sulekha",
-        "Indiamart",
-        "Referral",
-        "Other",
-      ]);
-      setEnquiryApproachOptions(["Approach 1", "Approach 2", "Approach 3"]);
-      setReceiverOptions(["Receiver 1", "Receiver 2", "Receiver 3"]);
-      setItemNameOptions(["Item 1", "Item 2", "Item 3"]);
-    }
-  };
 
 
 
@@ -266,91 +193,46 @@ const CallTrackerForm = ({ onClose = () => window.history.back() }) => {
   }
 
   // Function to handle form submission
-  const handleSubmit = async () => {
-    setIsSubmitting(true)
-    try {
-      const currentDate = new Date()
-      const formattedDate = formatDateToDDMMYYYY(currentDate)
+const handleSubmit = async () => {
+  setIsSubmitting(true);
+  try {
+     const baseURL = import.meta.env.VITE_API_URL || "http://localhost:5050";
+    const payload = {
+      scName: formData.scName,
+      leadSource: formData.leadSource,
+      companyName: formData.companyName,
+      phoneNumber: formData.phoneNumber,
+      salesPersonName: formData.salesPersonName,
+      location: formData.location,
+      emailAddress: formData.emailAddress,
+      enquiryReceiverName: formData.enquiryReceiverName,
+      enquiryDate: formData.enquiryDate,
+      enquiryApproach: formData.enquiryApproach,
+      items
+    };
 
-      // Prepare row data for columns C to L (indices 2-11)
-      const rowData = []
+    const res = await fetch(`${baseURL}/direct-enquiry-form`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
 
-      // Add form data to columns C to L (indices 2-11)
-      rowData.push(
-        formattedDate,
-        "",
-        formData.leadSource,           // Column C (index 2)
-        formData.companyName,          // Column D (index 3)
-        formData.phoneNumber,          // Column E (index 4)
-        formData.salesPersonName,      // Column F (index 5)
-        formData.location,             // Column G (index 6)
-        formData.emailAddress,         // Column H (index 7)
-        formData.enquiryReceiverName,  // Column I (index 8)
-        formData.enquiryDate ? formatDateToDDMMYYYY(formData.enquiryDate) : "", // Column J (index 9)
-        formData.enquiryApproach       // Column K (index 10)
-      )
+    const json = await res.json();
 
-      // Add items as JSON in column L (index 11)
-      const itemsJson = items
-        .filter(item => item.name.trim() !== "" || item.quantity.trim() !== "") // Filter out empty items
-        .map(item => ({
-          name: item.name || "",
-          quantity: item.quantity || "0"
-        }))
-
-      rowData.push(JSON.stringify(itemsJson)) // Column L (index 11)
-
-      // Add empty placeholders to reach column AP (index 41)
-      // From column M (index 12) to AO (index 40) = 29 empty columns
-      for (let i = 0; i < 29; i++) {
-        rowData.push("")
-      }
-
-      // Add SC Name to column AP (index 41)
-      rowData.push(formData.scName)
-
-      console.log("Row Data to be submitted:", rowData)
-
-      // Submit data to Google Sheets using fetch
-      const scriptUrl = "https://script.google.com/macros/s/AKfycbyLTNpTAVKaVuGH_-GrVNxDOgXqbWiBYzdf8PQWWwIFhLiIz_1lT3qEQkl7BS1osfToGQ/exec"
-
-      // Parameters for Google Apps Script
-      const params = {
-        sheetName: "ENQUIRY TO ORDER",
-        action: "insert",
-        rowData: JSON.stringify(rowData)
-      }
-
-      // Create URL-encoded string for the parameters
-      const urlParams = new URLSearchParams()
-      for (const key in params) {
-        urlParams.append(key, params[key])
-      }
-
-      // Send the data
-      const response = await fetch(scriptUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: urlParams
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        alert("Data submitted successfully!")
-        onClose() // Close the form after successful submission
-      } else {
-        alert("Error submitting data: " + (result.error || "Unknown error"))
-      }
-    } catch (error) {
-      console.error("Error submitting form:", error)
-      alert("Error submitting form: " + error.message)
-    } finally {
-      setIsSubmitting(false)
+    if (json.success) {
+      alert("Saved Successfully!");
+      onClose();
+    } else {
+      alert("Error: " + json.error);
     }
+
+  } catch (error) {
+    alert("Submit failed: " + error.message);
   }
+
+  setIsSubmitting(false);
+};
+
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -440,16 +322,23 @@ const CallTrackerForm = ({ onClose = () => window.history.back() }) => {
                   type="text"
                   className="w-full px-3 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 text-base"
                   value={formData.companyName}
-                  onChange={(e) => {
-                    const selectedCompany = e.target.value;
-                    const autoLocation = companyLocationMap[selectedCompany] || "";
-                    setFormData({
-                      ...formData,
-                      companyName: selectedCompany,
-                      location: autoLocation,
-                    });
-                    setShowCompanyDropdown(true);
-                  }}
+                 onChange={(e) => {
+  const selectedCompany = e.target.value;
+
+  const details = directCompanyDetails[selectedCompany] || {};
+
+  setFormData({
+    ...formData,
+    companyName: selectedCompany,
+    phoneNumber: details.phone || "",
+    salesPersonName: details.contactPerson || "",
+    location: details.billingAddress || "",
+    // emailAddress: details.email || "",
+  });
+
+  setShowCompanyDropdown(true);
+}}
+
                   onFocus={() => setShowCompanyDropdown(true)}
                   placeholder="Select or type company name"
                   required
@@ -473,15 +362,20 @@ const CallTrackerForm = ({ onClose = () => window.history.back() }) => {
                   {filteredCompanies.map((company, index) => (
                     <div
                       key={index}
-                      onClick={() => {
-                        const autoLocation = companyLocationMap[company] || "";
-                        setFormData({
-                          ...formData,
-                          companyName: company,
-                          location: autoLocation,
-                        });
-                        setShowCompanyDropdown(false);
-                      }}
+                    onClick={() => {
+  const details = directCompanyDetails[company] || {};
+
+  setFormData({
+    ...formData,
+    companyName: company,
+    phoneNumber: details.phone || "",
+    salesPersonName: details.contactPerson || "",
+    location: details.billingAddress || "",
+  });
+
+  setShowCompanyDropdown(false);
+}}
+
                       className="px-4 py-3 hover:bg-gray-50 active:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0 touch-manipulation"
                     >
                       <span className="text-sm text-gray-700">{company}</span>

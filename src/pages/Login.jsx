@@ -8,8 +8,7 @@ function Login() {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const { login } = useContext(AuthContext)
+  const { login, isLoading } = useContext(AuthContext)
   const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
@@ -21,20 +20,11 @@ function Login() {
       return
     }
 
-    setIsLoading(true)
-
-    try {
-      const success = await login(username, password)
-      if (success) {
-        navigate("/")
-      } else {
-        setError("Invalid username or password")
-      }
-    } catch (err) {
-      setError("An error occurred. Please try again.")
-      console.error(err)
-    } finally {
-      setIsLoading(false)
+    const success = await login(username, password)
+    if (success) {
+      navigate("/")
+    } else {
+      setError("Invalid username or password")
     }
   }
 
@@ -42,18 +32,16 @@ function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-50 to-slate-100 p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-10">
-
-
-          {/* <p className="text-slate-600">Sign in to access your dashboard</p> */}
+          {/* You can add any header content here */}
         </div>
 
         <div className="bg-white rounded-lg shadow-md overflow-hidden">
           <div className="p-4">
             <div className="flex justify-center mb-6">
               <img
-                src="/logo.jpg" // Replace with your logo's path in the public folder
+                src="/logo.jpg"
                 alt="Company Logo"
-                className="max-w-xs w-full h-auto" // Responsive styling
+                className="max-w-xs w-full h-auto"
               />
             </div>
             <h1 className="text-center text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
@@ -104,7 +92,7 @@ function Login() {
             </form>
 
             <div className="mt-4 text-center text-sm text-gray-600">
-              {/* <p>Authenticate with your credentials from the Login sheet</p> */}
+              <p>Connect to PostgreSQL backend</p>
             </div>
           </div>
         </div>
